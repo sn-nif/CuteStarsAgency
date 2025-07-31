@@ -2,22 +2,22 @@
   min-height: 100vh;
 }
 
-/* Custom scrollbar for webkit browsers */
+/* Custom scrollbar for webkit browsers - Luxury theme */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: #1a1a1a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
+  background: linear-gradient(to bottom, #fbbf24, #f59e0b);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background: linear-gradient(to bottom, #f59e0b, #d97706);
 }
 
 /* Smooth transitions for interactive elements */
@@ -25,18 +25,18 @@
   transition: all 0.3s ease;
 }
 
-/* Focus states for accessibility */
+/* Focus states for accessibility - Luxury gold theme */
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid rgb(244 63 94);
+  outline: 2px solid rgb(251 191 36);
   outline-offset: 2px;
 }
 
-/* Image upload hover states */
+/* Image upload hover states - Luxury theme */
 .photo-upload-zone:hover {
-  border-color: rgb(244 63 94);
-  background-color: rgb(255 241 242);
+  border-color: rgb(251 191 36);
+  background-color: rgba(251, 191, 36, 0.1);
 }
 
 /* Loading animation */
@@ -53,35 +53,123 @@ textarea:focus-visible {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Card hover effects */
+/* Luxury shimmer effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.3), transparent);
+  background-size: 200px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Card hover effects - Luxury theme */
 .card-hover {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -10px rgba(251, 191, 36, 0.2), 
+              0 0 30px rgba(251, 191, 36, 0.1);
 }
 
-/* Button hover effects */
-.btn-gradient {
-  background: linear-gradient(135deg, rgb(244 63 94), rgb(236 72 153));
+/* Luxury button effects */
+.btn-luxury {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
   transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
 }
 
-.btn-gradient:hover {
-  background: linear-gradient(135deg, rgb(225 29 72), rgb(219 39 119));
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(244, 63, 94, 0.3);
+.btn-luxury::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
 }
 
-/* Form validation styles */
+.btn-luxury:hover::before {
+  left: 100%;
+}
+
+.btn-luxury:hover {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  transform: translateY(-2px);
+  box-shadow: 0 15px 30px rgba(251, 191, 36, 0.4);
+}
+
+/* Form validation styles - Luxury theme */
 .input-error {
   border-color: rgb(239 68 68);
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
 }
 
 .input-success {
-  border-color: rgb(34 197 94);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
+  border-color: rgb(251 191 36);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+}
+
+/* Gold gradient text */
+.text-luxury {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b, #fbbf24);
+  background-size: 200% 200%;
+  animation: gradient 3s ease infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Luxury glass effect */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+/* Image overlay effects */
+.image-overlay {
+  position: relative;
+  overflow: hidden;
+}
+
+.image-overlay::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, 
+    rgba(0, 0, 0, 0.3), 
+    rgba(251, 191, 36, 0.1), 
+    rgba(0, 0, 0, 0.4));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-overlay:hover::after {
+  opacity: 1;
 }
