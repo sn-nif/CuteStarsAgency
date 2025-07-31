@@ -66,28 +66,6 @@ const ApplicationForm = () => {
     }));
   };
 
-  const uploadPhotos = async (photos) => {
-    if (photos.length === 0) return [];
-    const uploadPromises = photos.map(async (photo) => {
-      const formData = new FormData();
-      formData.append("photo", photo.file);
-      try {
-        const res = await axios.post(`${API}/upload/photo`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-          onUploadProgress: (progressEvent) => {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(progress);
-          }
-        });
-        return res.data.url;
-      } catch (err) {
-        console.error("Upload failed:", err);
-        throw new Error(`Failed to upload ${photo.name}`);
-      }
-    });
-    return await Promise.all(uploadPromises);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -106,7 +84,7 @@ const ApplicationForm = () => {
     if (parseInt(formData.age) < 18 || parseInt(formData.age) > 35) {
       toast({
         title: "Age Requirement",
-        description: "Applicants must be between 18-35 years old",
+        description: "Applicants must be between 18–35 years old",
         variant: "destructive"
       });
       setIsSubmitting(false);
@@ -114,20 +92,8 @@ const ApplicationForm = () => {
     }
 
     try {
-      const photoUrls = await uploadPhotos(formData.photos);
-      const applicationData = {
-        name: formData.name,
-        age: parseInt(formData.age),
-        email: formData.email,
-        contact: formData.contact,
-        instagram: formData.instagram,
-        tiktok: formData.tiktok,
-        twitter: formData.twitter,
-        photos: photoUrls
-      };
-
+      const applicationData = { ...formData };
       await axios.post(`${API}/apply`, applicationData);
-
       toast({
         title: "Application Submitted!",
         description: "We'll contact you within 48 hours."
@@ -143,9 +109,7 @@ const ApplicationForm = () => {
         twitter: "",
         photos: []
       });
-
     } catch (error) {
-      console.error("Submission failed:", error);
       toast({
         title: "Submission Failed",
         description: error.response?.data?.message || "Something went wrong.",
@@ -173,7 +137,7 @@ const ApplicationForm = () => {
         </div>
       </header>
 
-      <div className="px-6 pb-8">
+      <div className="px-6 pb-12">
         <Card className="max-w-lg mx-auto shadow-2xl border-gray-700 bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-sm">
           <CardHeader className="text-center pb-6">
             <CardTitle className="text-2xl bg-gradient-to-r from-yellow-400 to-yellow-200 bg-clip-text text-transparent">
@@ -184,9 +148,76 @@ const ApplicationForm = () => {
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* All your existing input fields stay unchanged */}
-              {/* No need to modify form UI — just backend hook is updated */}
-              {/* ... form content as in your original code ... */}
+
+              <div>
+                <Label htmlFor="name">Full Name *</Label>
+                <Input id="name" name="name" type="text" value={formData.name} onChange={handleInputChange} required />
+              </div>
+
+              <div>
+                <Label htmlFor="age">Age *</Label>
+                <Input id="age" name="age" type="number" value={formData.age} onChange={handleInputChange} required />
+              </div>
+
+              <div>
+                <Label htmlFor="email">Email *</Label>
+                <Input id="email" name="email" type="email" value={formData.email} onChange={handleInputChange} required />
+              </div>
+
+              <div>
+                <Label htmlFor="contact">Phone *</Label>
+                <Input id="contact" name="contact" type="tel" value={formData.contact} onChange={handleInputChange} required />
+              </div>
+
+              <div>
+                <Label htmlFor="instagram">Instagram</Label>
+                <Input id="instagram" name="instagram" type="text" value={formData.instagram} onChange={handleInputChange} />
+              </div>
+
+              <div>
+                <Label htmlFor="tiktok">TikTok</Label>
+                <Input id="tiktok" name="tiktok" type="text" value={formData.tiktok} onChange={handleInputChange} />
+              </div>
+
+              <div>
+                <Label htmlFor="twitter">X / Twitter</Label>
+                <Input id="twitter" name="twitter" type="text" value={formData.twitter} onChange={handleInputChange} />
+              </div>
+
+              <div>
+                <Label htmlFor="photos">Upload Photos (optional)</Label>
+                <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} />
+              </div>
+
+              {/* Upload progress bar (optional) */}
+              {uploadProgress > 0 && (
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className="bg-yellow-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                </div>
+              )}
+
+              {/* Photo previews */}
+              {formData.photos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {formData.photos.map(photo => (
+                    <div key={photo.id} className="relative">
+                      <img src={photo.url} alt="preview" className="w-full h-20 object-cover rounded" />
+                      <button type="button" onClick={() => removePhoto(photo.id)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:to-yellow-700 text-black py-3 rounded-xl text-lg font-semibold" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit Application"
+                )}
+              </Button>
             </form>
           </CardContent>
         </Card>
