@@ -1,19 +1,88 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Login - CuteStars</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Login - CuteStars</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to bottom right, #000000, #1a1a1a);
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .login-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 15px;
+      padding: 40px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);
+    }
+
+    .login-card h2 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 24px;
+      color: gold;
+    }
+
+    .login-card input[type="text"],
+    .login-card input[type="password"] {
+      width: 100%;
+      padding: 12px 15px;
+      margin: 10px 0 20px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background-color: #1f1f1f;
+      color: white;
+      font-size: 14px;
+    }
+
+    .login-card input[type="submit"] {
+      background: linear-gradient(to right, gold, orange);
+      color: black;
+      border: none;
+      padding: 12px;
+      width: 100%;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    .login-card input[type="submit"]:hover {
+      background: linear-gradient(to right, #ffd700, #ffa500);
+    }
+
+    .error-msg {
+      text-align: center;
+      color: #ff4d4f;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+  </style>
 </head>
 <body>
-    <h2>Login</h2>
+
+  <div class="login-card">
+    <h2>Admin Login</h2>
     {% if error %}
-    <p style="color: red;">{{ error }}</p>
+      <div class="error-msg">{{ error }}</div>
     {% endif %}
     <form method="POST">
-        <label>Username:</label><br>
-        <input type="text" name="username"><br>
-        <label>Password:</label><br>
-        <input type="password" name="password"><br><br>
-        <input type="submit" value="Login">
+      <input type="text" name="username" placeholder="Username" required />
+      <input type="password" name="password" placeholder="Password" required />
+      <input type="submit" value="Login" />
     </form>
+  </div>
+
 </body>
 </html>
