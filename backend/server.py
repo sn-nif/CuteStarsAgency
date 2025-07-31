@@ -1,22 +1,30 @@
-from flask import Flask, request, render_template, redirect, url_for, session
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 from pymongo import MongoClient
+from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import os
 
+# Load environment variables
 load_dotenv()
 
 # Flask setup
 app = Flask(__name__)
-app.secret_key = "super-secret-key"  # Change this to something long and random in production
+app.secret_key = "super-secret-key"  # Change this in production
 
 # MongoDB setup
 MONGO_URI = os.getenv("MONGODB_URI")
 PORT = int(os.getenv("PORT", 10000))
 client = MongoClient(MONGO_URI)
 db = client["CuteStarsDB"]
-applications_collection = db["applications"]  # Change collection name if needed
+applications_collection = db["applications"]
 
-# Simple credentials (you can change later)
+# Upload config
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB per file
+
+# Credentials
 USERNAME = "admin"
 PASSWORD = "Stars2025!"
 
@@ -52,6 +60,48 @@ def applications():
 
     return render_template("applications.html", apps=data)
 
+@app.route("/apply", methods=["POST"])
+def apply():
+    try:
+        # Get form fields
+        name = request.form.get("name")
+        age = request.form.get("age")
+        email = request.form.get("email")
+        contact = request.form.get("contact")
+        instagram = request.form.get("instagram")
+        tiktok = request.form.get("tiktok")
+        twitter = request.form.get("twitter")
+        photos = request.files.getlist("photos")
+
+        # Validate required fields
+        if not all([name, age, email, contact]) or len(photos) == 0:
+            return jsonify({"message": "Missing required fields or photos."}), 400
+
+        # Save uploaded photos
+        saved_files = []
+        for photo in photos:
+            filename = secure_filename(photo.filename)
+            path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            photo.save(path)
+            saved_files.append(filename)
+
+        # Insert into MongoDB
+        applications_collection.insert_one({
+            "name": name,
+            "age": age,
+            "email": email,
+            "contact": contact,
+            "instagram": instagram,
+            "tiktok": tiktok,
+            "twitter": twitter,
+            "photos": saved_files
+        })
+
+        return jsonify({"message": "Application received successfully."}), 200
+
+    except Exception as e:
+        print("❌ Error in /apply:", str(e))
+        return jsonify({"message": "Server error while processing application."}), 500
 
 if __name__ == "__main__":
     print("✅ Connected to MongoDB")
