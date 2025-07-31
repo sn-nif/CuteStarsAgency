@@ -2,17 +2,19 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { 
-  ArrowLeft, Crown, Upload, User, Mail, Phone, Calendar,
-  Instagram, X, Loader2
+import { useToast } from "../hooks/use-toast";
+import {
+  ArrowLeft, Crown, Upload, Loader2
 } from "lucide-react";
 import axios from "axios";
+import PhoneInput from "react-phone-input-2";
+import 'react-phone-input-2/lib/style.css';
 
 const API = "https://cutestars-backend.onrender.com";
 
 const ApplicationForm = () => {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     name: "",
     age: "",
@@ -25,148 +27,275 @@ const ApplicationForm = () => {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const handleChange = (e) => {
-    const { name, value, files } = e.target;
-    if (name === "photos") {
-      setFormData({ ...formData, photos: Array.from(files) });
-    } else {
-      setFormData({ ...formData, [name]: value });
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handlePhoneChange = (value) => {
+    setFormData(prev => ({ ...prev, contact: value }));
+  };
+
+  const handlePhotoUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const validFiles = files.filter(file => file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024);
+
+    if (validFiles.length !== files.length) {
+      toast({
+        title: "Invalid Files",
+        description: "Only image files under 10MB are allowed.",
+        variant: "destructive"
+      });
     }
+
+    const newPhotos = validFiles.map(file => ({
+      id: Date.now() + Math.random(),
+      name: file.name,
+      size: file.size,
+      file,
+      url: URL.createObjectURL(file)
+    }));
+
+    setFormData(prev => ({
+      ...prev,
+      photos: [...prev.photos, ...newPhotos].slice(0, 5)
+    }));
+  };
+
+  const removePhoto = (photoId) => {
+    setFormData(prev => ({
+      ...prev,
+      photos: prev.photos.filter(photo => photo.id !== photoId)
+    }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setUploadProgress(0);
+
+    const { name, age, email, contact, photos } = formData;
+
+    if (!name || !age || !email || !contact || photos.length === 0) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields and upload at least one photo.",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (parseInt(age) < 18 || parseInt(age) > 35) {
+      toast({
+        title: "Age Requirement",
+        description: "Applicants must be between 18–35 years old",
+        variant: "destructive"
+      });
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
-      const form = new FormData();
-      for (const key in formData) {
-        if (key === "photos") {
-          formData.photos.forEach(photo => {
-            form.append("photos", photo);
-          });
-        } else {
-          form.append(key, formData[key]);
-        }
-      }
+      const applicationData = {
+        ...formData,
+        photos: formData.photos.map(photo => photo.file)
+      };
 
-      const response = await axios.post(`${API}/apply`, form, {
+      const form = new FormData();
+      Object.entries(applicationData).forEach(([key, value]) => {
+        if (key === "photos") {
+          value.forEach(file => form.append("photos", file));
+        } else {
+          form.append(key, value);
+        }
+      });
+
+      await axios.post(`${API}/apply`, form, {
         headers: { "Content-Type": "multipart/form-data" }
       });
 
-      if (response.status === 200) {
-        setShowSuccessModal(true);
-        setFormData({
-          name: "",
-          age: "",
-          email: "",
-          contact: "",
-          instagram: "",
-          tiktok: "",
-          twitter: "",
-          photos: []
-        });
-      }
+      setShowSuccessModal(true);
+      setFormData({
+        name: "",
+        age: "",
+        email: "",
+        contact: "",
+        instagram: "",
+        tiktok: "",
+        twitter: "",
+        photos: []
+      });
     } catch (error) {
-      alert("Submission failed. Please try again.");
-    } finally {
-      setIsSubmitting(false);
+      toast({
+        title: "Submission Failed",
+        description: error.response?.data?.message || "Something went wrong.",
+        variant: "destructive"
+      });
     }
+
+    setIsSubmitting(false);
+    setUploadProgress(0);
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center text-gold-600 text-2xl font-bold">
-            Apply Now
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              name="name"
-              placeholder="Name"
-              value={formData.name}
-              onChange={handleChange}
-              className="placeholder:text-yellow-500"
-              required
-            />
-            <Input
-              name="age"
-              placeholder="Age"
-              value={formData.age}
-              onChange={handleChange}
-              className="placeholder:text-yellow-500"
-              required
-            />
-            <Input
-              name="email"
-              placeholder="Email"
-              value={formData.email}
-              onChange={handleChange}
-              className="placeholder:text-yellow-500"
-              required
-            />
-            <Input
-              name="contact"
-              placeholder="Phone Number"
-              value={formData.contact}
-              onChange={handleChange}
-              className="placeholder:text-yellow-500"
-              required
-            />
-            <Input
-              name="instagram"
-              placeholder="Instagram Username"
-              value={formData.instagram}
-              onChange={handleChange}
-              className="placeholder:text-yellow-500"
-            />
-            <Input
-              name="tiktok"
-              placeholder="TikTok Username"
-              value={formData.tiktok}
-              onChange={handleChange}
-              className="placeholder:text-yellow-500"
-            />
-            <Input
-              name="twitter"
-              placeholder="Twitter Username"
-              value={formData.twitter}
-              onChange={handleChange}
-              className="placeholder:text-yellow-500"
-            />
+    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-white">
+      <header className="px-4 py-6 flex items-center">
+        <Link to="/">
+          <Button variant="ghost" size="sm" className="mr-3 text-white hover:text-yellow-400 hover:bg-gray-800">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+        </Link>
+        <div className="flex items-center gap-2">
+          <Crown className="w-6 h-6 text-yellow-400 fill-current" />
+          <h1 className="text-xl font-bold bg-gradient-to-r from-yellow-400 to-yellow-200 bg-clip-text text-transparent">
+            Luxury Application
+          </h1>
+        </div>
+      </header>
 
-            <div>
-              <label className="block mb-2 text-yellow-500 font-medium">Upload Photos</label>
-              <input
-                type="file"
-                name="photos"
-                accept="image/*"
-                multiple
-                onChange={handleChange}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-yellow-500 file:text-white hover:file:bg-yellow-600"
+      <div className="px-6 pb-12">
+        <Card className="max-w-lg mx-auto shadow-2xl border-gray-700 bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-sm">
+          <CardHeader className="text-center pb-6">
+            <CardTitle className="text-2xl bg-gradient-to-r from-yellow-400 to-yellow-200 bg-clip-text text-transparent">
+              Join Cute Stars Elite
+            </CardTitle>
+            <p className="text-gray-300 mt-2">Begin your luxury career journey</p>
+          </CardHeader>
+
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <Input
+                name="name"
+                type="text"
+                placeholder="Full Name *"
+                value={formData.name}
+                onChange={handleInputChange}
+                className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 focus:border-yellow-500"
                 required
               />
-            </div>
+              <Input
+                name="age"
+                type="number"
+                placeholder="Age (18–35) *"
+                value={formData.age}
+                onChange={handleInputChange}
+                className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 focus:border-yellow-500"
+                required
+              />
+              <Input
+                name="email"
+                type="email"
+                placeholder="Email *"
+                value={formData.email}
+                onChange={handleInputChange}
+                className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 focus:border-yellow-500"
+                required
+              />
+              <div className="bg-gray-800/40 border border-gray-600 rounded-lg px-3 py-2">
+                <PhoneInput
+                  country={'us'}
+                  value={formData.contact}
+                  onChange={handlePhoneChange}
+                  inputStyle={{
+                    width: "100%",
+                    backgroundColor: "transparent",
+                    color: "white",
+                    border: "none"
+                  }}
+                  buttonStyle={{
+                    backgroundColor: "transparent",
+                    border: "none"
+                  }}
+                  containerStyle={{ width: "100%" }}
+                  placeholder="Phone Number *"
+                  required
+                />
+              </div>
 
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
-            >
-              {isSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                "Submit Application"
+              <Input
+                name="instagram"
+                type="text"
+                placeholder="Instagram (optional)"
+                value={formData.instagram}
+                onChange={handleInputChange}
+                className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 focus:border-yellow-500"
+              />
+              <Input
+                name="tiktok"
+                type="text"
+                placeholder="TikTok (optional)"
+                value={formData.tiktok}
+                onChange={handleInputChange}
+                className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 focus:border-yellow-500"
+              />
+              <Input
+                name="twitter"
+                type="text"
+                placeholder="X / Twitter (optional)"
+                value={formData.twitter}
+                onChange={handleInputChange}
+                className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 focus:border-yellow-500"
+              />
+
+              {/* Upload */}
+              <div className="bg-gray-800/40 border-2 border-dashed border-gray-600 hover:border-yellow-500 rounded-xl p-6 text-center transition-all">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  id="photo-upload"
+                />
+                <label htmlFor="photo-upload" className="cursor-pointer block">
+                  <Upload className="w-8 h-8 mx-auto text-yellow-400 mb-2" />
+                  <p className="text-sm text-gray-300">Upload up to 5 photos *</p>
+                  <p className="text-xs text-gray-500">Max size: 10MB each</p>
+                </label>
+              </div>
+
+              {formData.photos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {formData.photos.map(photo => (
+                    <div key={photo.id} className="relative">
+                      <img src={photo.url} alt={photo.name} className="w-full h-20 object-cover rounded-lg border border-gray-600" />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(photo.id)}
+                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:to-yellow-700 text-black py-3 rounded-xl text-lg font-semibold"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit Application"
+                )}
+              </Button>
+              <p className="text-xs text-gray-500 text-center">
+                By submitting, you agree to be contacted by Cute Stars Agency
+              </p>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Success Modal */}
       {showSuccessModal && (
