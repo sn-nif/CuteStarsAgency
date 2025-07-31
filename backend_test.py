@@ -186,7 +186,7 @@ class BackendTester:
         # Test 3: Invalid age
         print("\nTest 3: Invalid age validation")
         invalid_age_data = valid_app_data.copy()
-        invalid_age_data["email"] = "test_invalid_age@example.com"
+        invalid_age_data["email"] = f"test_invalid_age.{timestamp}@example.com"
         invalid_age_data["age"] = 17  # Below minimum
         
         try:
