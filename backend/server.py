@@ -45,10 +45,13 @@ def logout():
 def applications():
     if "user" not in session:
         return redirect(url_for("login"))
+
     data = list(applications_collection.find({}, {"_id": 0}))
-if not data:
-    data = [{}]  # avoid template crash when empty
-return render_template("applications.html", apps=data)
+    if not data:
+        data = [{}]  # avoid template crash when empty
+
+    return render_template("applications.html", apps=data)
+
 
 if __name__ == "__main__":
     print("✅ Connected to MongoDB")
