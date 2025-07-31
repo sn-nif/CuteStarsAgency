@@ -1,9 +1,9 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import ApplicationForm from "./pages/ApplicationForm";
 import HomePage from "./pages/HomePage";
+import ApplicationForm from "./pages/ApplicationForm";
 
-function App() {
+const App = () => {
   return (
     <Router>
       <Routes>
@@ -12,6 +12,6 @@ function App() {
       </Routes>
     </Router>
   );
-}
+};
 
 export default App;
