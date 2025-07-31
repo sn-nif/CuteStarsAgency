@@ -4,20 +4,23 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Textarea } from "../components/ui/textarea";
 import { useToast } from "../hooks/use-toast";
 import { 
   ArrowLeft, 
-  Star, 
+  Crown, 
   Upload, 
   User, 
   Mail, 
   Phone, 
   Calendar,
   Instagram,
-  X
+  X,
+  Loader2
 } from "lucide-react";
-import { mockApplications } from "../utils/mock";
+import axios from "axios";
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const ApplicationForm = () => {
   const { toast } = useToast();
@@ -32,6 +35,7 @@ const ApplicationForm = () => {
     photos: []
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -44,11 +48,26 @@ const ApplicationForm = () => {
   const handlePhotoUpload = (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
-      // Mock file handling - in real app would upload to server
-      const newPhotos = files.map(file => ({
+      // Validate file types and sizes
+      const validFiles = files.filter(file => {
+        const isValidType = file.type.startsWith('image/');
+        const isValidSize = file.size <= 10 * 1024 * 1024; // 10MB
+        return isValidType && isValidSize;
+      });
+
+      if (validFiles.length !== files.length) {
+        toast({
+          title: "Invalid Files",
+          description: "Some files were rejected. Only images under 10MB are allowed.",
+          variant: "destructive"
+        });
+      }
+
+      const newPhotos = validFiles.map(file => ({
         id: Date.now() + Math.random(),
         name: file.name,
         size: file.size,
+        file: file,
         url: URL.createObjectURL(file)
       }));
       
@@ -66,9 +85,38 @@ const ApplicationForm = () => {
     }));
   };
 
+  const uploadPhotos = async (photos) => {
+    if (photos.length === 0) return [];
+    
+    const uploadPromises = photos.map(async (photo) => {
+      const formData = new FormData();
+      formData.append('photo', photo.file);
+      
+      try {
+        const response = await axios.post(`${API}/upload/photo`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (progressEvent) => {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(progress);
+          }
+        });
+        
+        return response.data.url;
+      } catch (error) {
+        console.error('Photo upload failed:', error);
+        throw new Error(`Failed to upload ${photo.name}`);
+      }
+    });
+
+    return await Promise.all(uploadPromises);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setUploadProgress(0);
 
     // Basic validation
     if (!formData.name || !formData.age || !formData.email || !formData.contact) {
@@ -91,14 +139,26 @@ const ApplicationForm = () => {
       return;
     }
 
-    // Mock submission
-    setTimeout(() => {
-      mockApplications.push({
-        id: Date.now(),
-        ...formData,
-        submittedAt: new Date().toISOString(),
-        status: "pending"
-      });
+    try {
+      // Upload photos first
+      let photoUrls = [];
+      if (formData.photos.length > 0) {
+        photoUrls = await uploadPhotos(formData.photos);
+      }
+
+      // Submit application
+      const applicationData = {
+        name: formData.name,
+        age: parseInt(formData.age),
+        email: formData.email,
+        contact: formData.contact,
+        instagram: formData.instagram,
+        tiktok: formData.tiktok,
+        twitter: formData.twitter,
+        photos: photoUrls
+      };
+
+      const response = await axios.post(`${API}/applications`, applicationData);
 
       toast({
         title: "Application Submitted Successfully!",
@@ -117,30 +177,43 @@ const ApplicationForm = () => {
         photos: []
       });
       
-      setIsSubmitting(false);
-    }, 2000);
+    } catch (error) {
+      console.error('Application submission failed:', error);
+      toast({
+        title: "Submission Failed",
+        description: error.response?.data?.message || "Please try again later",
+        variant: "destructive"
+      });
+    }
+    
+    setIsSubmitting(false);
+    setUploadProgress(0);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black text-white">
       {/* Header */}
       <header className="px-4 py-6 flex items-center">
         <Link to="/">
-          <Button variant="ghost" size="sm" className="mr-3">
+          <Button variant="ghost" size="sm" className="mr-3 text-white hover:text-yellow-400 hover:bg-gray-800">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
         <div className="flex items-center gap-2">
-          <Star className="w-6 h-6 text-rose-500 fill-current" />
-          <h1 className="text-xl font-bold text-gray-900">Application Form</h1>
+          <Crown className="w-6 h-6 text-yellow-400 fill-current" />
+          <h1 className="text-xl font-bold bg-gradient-to-r from-yellow-400 to-yellow-200 bg-clip-text text-transparent">
+            Luxury Application
+          </h1>
         </div>
       </header>
 
       <div className="px-6 pb-8">
-        <Card className="max-w-lg mx-auto shadow-lg border-0 bg-white/90 backdrop-blur-sm">
+        <Card className="max-w-lg mx-auto shadow-2xl border-gray-700 bg-gradient-to-br from-gray-800/90 to-gray-900/90 backdrop-blur-sm">
           <CardHeader className="text-center pb-6">
-            <CardTitle className="text-2xl text-gray-900">Join Cute Stars</CardTitle>
-            <p className="text-gray-600 mt-2">Tell us about yourself and start your journey</p>
+            <CardTitle className="text-2xl bg-gradient-to-r from-yellow-400 to-yellow-200 bg-clip-text text-transparent">
+              Join Cute Stars Elite
+            </CardTitle>
+            <p className="text-gray-300 mt-2">Begin your luxury career journey</p>
           </CardHeader>
           
           <CardContent>
@@ -148,7 +221,7 @@ const ApplicationForm = () => {
               {/* Basic Information */}
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="name" className="flex items-center gap-2 text-gray-700 mb-2">
+                  <Label htmlFor="name" className="flex items-center gap-2 text-gray-200 mb-2">
                     <User className="w-4 h-4" />
                     Full Name *
                   </Label>
@@ -159,13 +232,13 @@ const ApplicationForm = () => {
                     value={formData.name}
                     onChange={handleInputChange}
                     placeholder="Enter your full name"
-                    className="border-gray-200 focus:border-rose-500"
+                    className="border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:border-yellow-500 focus:ring-yellow-500/20"
                     required
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="age" className="flex items-center gap-2 text-gray-700 mb-2">
+                  <Label htmlFor="age" className="flex items-center gap-2 text-gray-200 mb-2">
                     <Calendar className="w-4 h-4" />
                     Age *
                   </Label>
@@ -178,14 +251,14 @@ const ApplicationForm = () => {
                     value={formData.age}
                     onChange={handleInputChange}
                     placeholder="18"
-                    className="border-gray-200 focus:border-rose-500"
+                    className="border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:border-yellow-500 focus:ring-yellow-500/20"
                     required
                   />
-                  <p className="text-xs text-gray-500 mt-1">Must be between 18-35 years old</p>
+                  <p className="text-xs text-gray-400 mt-1">Must be between 18-35 years old</p>
                 </div>
 
                 <div>
-                  <Label htmlFor="email" className="flex items-center gap-2 text-gray-700 mb-2">
+                  <Label htmlFor="email" className="flex items-center gap-2 text-gray-200 mb-2">
                     <Mail className="w-4 h-4" />
                     Email Address *
                   </Label>
@@ -196,13 +269,13 @@ const ApplicationForm = () => {
                     value={formData.email}
                     onChange={handleInputChange}
                     placeholder="your.email@example.com"
-                    className="border-gray-200 focus:border-rose-500"
+                    className="border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:border-yellow-500 focus:ring-yellow-500/20"
                     required
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="contact" className="flex items-center gap-2 text-gray-700 mb-2">
+                  <Label htmlFor="contact" className="flex items-center gap-2 text-gray-200 mb-2">
                     <Phone className="w-4 h-4" />
                     Phone Number *
                   </Label>
@@ -213,7 +286,7 @@ const ApplicationForm = () => {
                     value={formData.contact}
                     onChange={handleInputChange}
                     placeholder="+1 (555) 123-4567"
-                    className="border-gray-200 focus:border-rose-500"
+                    className="border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:border-yellow-500 focus:ring-yellow-500/20"
                     required
                   />
                 </div>
@@ -221,11 +294,11 @@ const ApplicationForm = () => {
 
               {/* Social Media */}
               <div className="space-y-4">
-                <h3 className="font-semibold text-gray-900">Social Media Profiles</h3>
-                <p className="text-sm text-gray-600">Help us understand your online presence</p>
+                <h3 className="font-semibold text-gray-200">Social Media Profiles</h3>
+                <p className="text-sm text-gray-400">Help us understand your online presence</p>
                 
                 <div>
-                  <Label htmlFor="instagram" className="flex items-center gap-2 text-gray-700 mb-2">
+                  <Label htmlFor="instagram" className="flex items-center gap-2 text-gray-200 mb-2">
                     <Instagram className="w-4 h-4" />
                     Instagram
                   </Label>
@@ -236,12 +309,12 @@ const ApplicationForm = () => {
                     value={formData.instagram}
                     onChange={handleInputChange}
                     placeholder="@yourusername"
-                    className="border-gray-200 focus:border-rose-500"
+                    className="border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:border-yellow-500 focus:ring-yellow-500/20"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="tiktok" className="flex items-center gap-2 text-gray-700 mb-2">
+                  <Label htmlFor="tiktok" className="flex items-center gap-2 text-gray-200 mb-2">
                     <span className="w-4 h-4 text-sm font-bold">TT</span>
                     TikTok
                   </Label>
@@ -252,12 +325,12 @@ const ApplicationForm = () => {
                     value={formData.tiktok}
                     onChange={handleInputChange}
                     placeholder="@yourusername"
-                    className="border-gray-200 focus:border-rose-500"
+                    className="border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:border-yellow-500 focus:ring-yellow-500/20"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="twitter" className="flex items-center gap-2 text-gray-700 mb-2">
+                  <Label htmlFor="twitter" className="flex items-center gap-2 text-gray-200 mb-2">
                     <X className="w-4 h-4" />
                     X (Twitter)
                   </Label>
@@ -268,17 +341,17 @@ const ApplicationForm = () => {
                     value={formData.twitter}
                     onChange={handleInputChange}
                     placeholder="@yourusername"
-                    className="border-gray-200 focus:border-rose-500"
+                    className="border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:border-yellow-500 focus:ring-yellow-500/20"
                   />
                 </div>
               </div>
 
               {/* Photo Upload */}
               <div className="space-y-4">
-                <h3 className="font-semibold text-gray-900">Photos</h3>
-                <p className="text-sm text-gray-600">Upload up to 5 professional photos (optional but recommended)</p>
+                <h3 className="font-semibold text-gray-200">Professional Photos</h3>
+                <p className="text-sm text-gray-400">Upload up to 5 professional photos (optional but highly recommended)</p>
                 
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-rose-400 transition-colors">
+                <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-yellow-500 transition-colors bg-gray-800/30">
                   <input
                     type="file"
                     multiple
@@ -288,11 +361,21 @@ const ApplicationForm = () => {
                     id="photo-upload"
                   />
                   <label htmlFor="photo-upload" className="cursor-pointer">
-                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">Click to upload photos</p>
+                    <Upload className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                    <p className="text-gray-300">Click to upload photos</p>
                     <p className="text-xs text-gray-500">PNG, JPG up to 10MB each</p>
                   </label>
                 </div>
+
+                {/* Upload Progress */}
+                {uploadProgress > 0 && uploadProgress < 100 && (
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                )}
 
                 {/* Photo Preview */}
                 {formData.photos.length > 0 && (
@@ -302,12 +385,12 @@ const ApplicationForm = () => {
                         <img
                           src={photo.url}
                           alt={photo.name}
-                          className="w-full h-20 object-cover rounded-lg"
+                          className="w-full h-20 object-cover rounded-lg border border-gray-600"
                         />
                         <button
                           type="button"
                           onClick={() => removePhoto(photo.id)}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                          className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs transition-colors"
                         >
                           ×
                         </button>
@@ -321,13 +404,20 @@ const ApplicationForm = () => {
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 text-lg"
+                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-black py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 text-lg font-semibold disabled:opacity-50"
               >
-                {isSubmitting ? "Submitting Application..." : "Submit Application"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting Application...
+                  </>
+                ) : (
+                  "Submit Luxury Application"
+                )}
               </Button>
 
               <p className="text-xs text-gray-500 text-center">
-                By submitting, you agree to be contacted about opportunities with Cute Stars Agency
+                By submitting, you agree to be contacted about exclusive opportunities with Cute Stars Agency
               </p>
             </form>
           </CardContent>
