@@ -100,6 +100,8 @@ async def upload_photo(photo: UploadFile = File(...)):
         
         return {"url": photo_url, "filename": unique_filename}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Photo upload failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Photo upload failed")
