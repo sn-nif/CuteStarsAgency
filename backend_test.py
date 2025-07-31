@@ -135,10 +135,11 @@ class BackendTester:
         
         # Test 1: Valid application
         print("Test 1: Valid application submission")
+        timestamp = int(time.time())
         valid_app_data = {
             "name": "Emma Rodriguez",
             "age": 25,
-            "email": "emma.rodriguez@example.com",
+            "email": f"emma.rodriguez.{timestamp}@example.com",
             "contact": "+1-555-0123",
             "instagram": "@emma_rodriguez",
             "tiktok": "@emma_talent",
