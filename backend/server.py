@@ -76,7 +76,8 @@ def apply():
             return jsonify({"message": "Missing required fields or photos."}), 400
 
         # Get IP address
-        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
+ip_address = forwarded.split(",")[0].strip()
 
         # Get geolocation info from ipapi
         geo = {}
