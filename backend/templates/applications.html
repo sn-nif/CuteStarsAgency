@@ -1,24 +1,222 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Applications</title>
+  <meta charset="UTF-8" />
+  <title>Admin - Applications</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #f8f8f8;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: gold;
+    }
+    .actions {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      padding: 8px;
+      width: 40%;
+      border-radius: 5px;
+      border: none;
+      outline: none;
+    }
+    button {
+      margin: 0 5px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      background-color: gold;
+      color: black;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: #222;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #333;
+    }
+    img {
+      width: 60px;
+      height: 60px;
+      object-fit: cover;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .pagination {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 10;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      align-items: center;
+      justify-content: center;
+    }
+    .modal img {
+      max-width: 90vw;
+      max-height: 90vh;
+    }
+    .modal.show { display: flex; }
+  </style>
 </head>
 <body>
-    <h2>Submitted Applications</h2>
-    <a href="{{ url_for('logout') }}">Logout</a><br><br>
-    <table border="1" cellpadding="5">
-        <tr>
-            {% for key in apps[0].keys() %}
-                <th>{{ key }}</th>
-            {% endfor %}
-        </tr>
-        {% for app in apps %}
-        <tr>
-            {% for value in app.values() %}
-                <td>{{ value }}</td>
-            {% endfor %}
-        </tr>
+
+<h1>⭐ CuteStars Applications</h1>
+
+<div class="actions">
+  <input type="text" id="search" placeholder="Search name/email/socials..." onkeyup="filterData()" />
+  <button onclick="exportCSV()">Export CSV</button>
+  <button onclick="deleteSelected()">Delete Selected</button>
+  <label><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"> Select All</label>
+</div>
+
+<table id="appTable">
+  <thead>
+    <tr>
+      <th></th>
+      <th>Name</th>
+      <th>Age</th>
+      <th>Email</th>
+      <th>Phone</th>
+      <th>Socials</th>
+      <th>Photos</th>
+      <th>Delete</th>
+    </tr>
+  </thead>
+  <tbody id="appBody">
+    {% for app in apps|reverse %}
+    <tr>
+      <td><input type="checkbox" class="rowSelect"></td>
+      <td>{{ app.name }}</td>
+      <td>{{ app.age }}</td>
+      <td>{{ app.email }}</td>
+      <td>{{ app.contact }}</td>
+      <td>
+        {% if app.instagram %}IG: {{ app.instagram }}<br>{% endif %}
+        {% if app.tiktok %}TikTok: {{ app.tiktok }}<br>{% endif %}
+        {% if app.twitter %}X: {{ app.twitter }}{% endif %}
+      </td>
+      <td>
+        {% for photo in app.photos %}
+        <img src="/uploads/{{ photo }}" onclick="viewImage(this.src)" />
         {% endfor %}
-    </table>
+      </td>
+      <td>
+        <button onclick="deleteRow(this)">🗑️</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="pagination" id="pagination"></div>
+
+<!-- Full Image Modal -->
+<div class="modal" id="imageModal" onclick="this.classList.remove('show')">
+  <img src="" id="modalImg" />
+</div>
+
+<script>
+  const rowsPerPage = 10;
+  let currentPage = 1;
+
+  function paginate() {
+    const rows = [...document.querySelectorAll("#appBody tr")];
+    const totalPages = Math.ceil(rows.length / rowsPerPage);
+    rows.forEach((row, i) => {
+      row.style.display = (i >= (currentPage-1)*rowsPerPage && i < currentPage*rowsPerPage) ? "" : "none";
+    });
+
+    let paginationHTML = "";
+    for (let i = 1; i <= totalPages; i++) {
+      paginationHTML += `<button onclick="goToPage(${i})">${i}</button>`;
+    }
+    document.getElementById("pagination").innerHTML = paginationHTML;
+  }
+
+  function goToPage(page) {
+    currentPage = page;
+    paginate();
+  }
+
+  function filterData() {
+    const filter = document.getElementById("search").value.toLowerCase();
+    const rows = document.querySelectorAll("#appBody tr");
+    rows.forEach(row => {
+      row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
+    });
+  }
+
+  function viewImage(src) {
+    const modal = document.getElementById("imageModal");
+    document.getElementById("modalImg").src = src;
+    modal.classList.add("show");
+  }
+
+  function deleteRow(button) {
+    if (!confirm("Are you sure you want to delete this application?")) return;
+    const row = button.closest("tr");
+    row.remove();
+    paginate();
+  }
+
+  function exportCSV() {
+    const headers = ["Name", "Age", "Email", "Phone", "Instagram", "TikTok", "Twitter"];
+    const rows = [...document.querySelectorAll("#appBody tr")].map(tr => {
+      const cells = tr.querySelectorAll("td");
+      return [
+        cells[1].innerText,
+        cells[2].innerText,
+        cells[3].innerText,
+        cells[4].innerText,
+        cells[5]?.innerText?.split('\n')[0] || "",
+        cells[5]?.innerText?.split('\n')[1] || "",
+        cells[5]?.innerText?.split('\n')[2] || ""
+      ];
+    });
+
+    const csv = [headers.join(","), ...rows.map(r => r.map(f => `"${f}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "applications.csv";
+    link.click();
+  }
+
+  function toggleSelectAll() {
+    const checked = document.getElementById("selectAll").checked;
+    document.querySelectorAll(".rowSelect").forEach(c => c.checked = checked);
+  }
+
+  function deleteSelected() {
+    if (!confirm("Are you sure you want to delete selected applications?")) return;
+    document.querySelectorAll(".rowSelect:checked").forEach(c => {
+      c.closest("tr").remove();
+    });
+    paginate();
+  }
+
+  // Initialize pagination on load
+  paginate();
+</script>
+
 </body>
 </html>
