@@ -1,6 +1,7 @@
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 from pymongo import MongoClient
 from werkzeug.utils import secure_filename
+from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 
@@ -9,6 +10,7 @@ load_dotenv()
 
 # Flask setup
 app = Flask(__name__)
+CORS(app)  # Allow frontend requests from other domains
 app.secret_key = "super-secret-key"  # Change this in production
 
 # MongoDB setup
@@ -24,7 +26,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB per file
 
-# Credentials
+# Simple credentials
 USERNAME = "admin"
 PASSWORD = "Stars2025!"
 
@@ -100,8 +102,8 @@ def apply():
         return jsonify({"message": "Application received successfully."}), 200
 
     except Exception as e:
-        print("❌ Error in /apply:", str(e))
-        return jsonify({"message": "Server error while processing application."}), 500
+        # ✅ Return real error for debugging
+        return jsonify({"message": f"Server error: {str(e)}"}), 500
 
 if __name__ == "__main__":
     print("✅ Connected to MongoDB")
