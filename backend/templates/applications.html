@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Applications</title>
+</head>
+<body>
+    <h2>Submitted Applications</h2>
+    <a href="{{ url_for('logout') }}">Logout</a><br><br>
+    <table border="1" cellpadding="5">
+        <tr>
+            {% for key in apps[0].keys() %}
+                <th>{{ key }}</th>
+            {% endfor %}
+        </tr>
+        {% for app in apps %}
+        <tr>
+            {% for value in app.values() %}
+                <td>{{ value }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
