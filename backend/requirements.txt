@@ -1,4 +1,5 @@
-Flask
-python-dotenv
+flask
 pymongo
+python-dotenv
 flask-cors
+cloudinary
