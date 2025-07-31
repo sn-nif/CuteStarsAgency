@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify, send_from_directory
 from pymongo import MongoClient
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
@@ -10,8 +10,8 @@ load_dotenv()
 
 # Flask setup
 app = Flask(__name__)
-CORS(app)  # Allow frontend requests from other domains
-app.secret_key = "super-secret-key"  # Change this in production
+CORS(app)
+app.secret_key = "super-secret-key"  # Replace in production
 
 # MongoDB setup
 MONGO_URI = os.getenv("MONGODB_URI")
@@ -26,7 +26,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB per file
 
-# Simple credentials
+# Credentials
 USERNAME = "admin"
 PASSWORD = "Stars2025!"
 
@@ -58,14 +58,12 @@ def applications():
 
     data = list(applications_collection.find({}, {"_id": 0}))
     if not data:
-        data = [{}]  # avoid template crash when empty
-
+        data = [{}]
     return render_template("applications.html", apps=data)
 
 @app.route("/apply", methods=["POST"])
 def apply():
     try:
-        # Get form fields
         name = request.form.get("name")
         age = request.form.get("age")
         email = request.form.get("email")
@@ -75,11 +73,9 @@ def apply():
         twitter = request.form.get("twitter")
         photos = request.files.getlist("photos")
 
-        # Validate required fields
         if not all([name, age, email, contact]) or len(photos) == 0:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
-        # Save uploaded photos
         saved_files = []
         for photo in photos:
             filename = secure_filename(photo.filename)
@@ -87,7 +83,6 @@ def apply():
             photo.save(path)
             saved_files.append(filename)
 
-        # Insert into MongoDB
         applications_collection.insert_one({
             "name": name,
             "age": age,
@@ -102,8 +97,11 @@ def apply():
         return jsonify({"message": "Application received successfully."}), 200
 
     except Exception as e:
-        # ✅ Return real error for debugging
         return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 if __name__ == "__main__":
     print("✅ Connected to MongoDB")
