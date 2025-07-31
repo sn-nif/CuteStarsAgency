@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from flask_cors import CORS
 from dotenv import load_dotenv
 import cloudinary.uploader
+import requests
 import os
 
 # Load environment variables
@@ -74,11 +75,33 @@ def apply():
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
+        # Get IP address
+        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+
+        # Get geolocation info from ipapi
+        geo = {}
+        try:
+            res = requests.get(f"https://ipapi.co/{ip_address}/json/")
+            if res.status_code == 200:
+                data = res.json()
+                geo = {
+                    "ip": ip_address,
+                    "ip_country": data.get("country_name"),
+                    "ip_city": data.get("city"),
+                    "ip_region": data.get("region"),
+                    "ip_postal": data.get("postal"),
+                    "ip_org": data.get("org")
+                }
+        except Exception as geo_err:
+            print("🌐 IP lookup failed:", geo_err)
+
+        # Upload images to Cloudinary
         uploaded_urls = []
         for photo in photos:
             upload_result = cloudinary.uploader.upload(photo, folder="cutestars_applications")
             uploaded_urls.append(upload_result["secure_url"])
 
+        # Save to MongoDB
         applications_collection.insert_one({
             "name": name,
             "age": age,
@@ -87,7 +110,8 @@ def apply():
             "country": country,
             "instagram": instagram,
             "tiktok": tiktok,
-            "photos": uploaded_urls
+            "photos": uploaded_urls,
+            **geo
         })
 
         return jsonify({"message": "Application received successfully."}), 200
