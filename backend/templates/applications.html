@@ -1,91 +1,273 @@
-<script>
-  const rowsPerPage = 10;
-  let currentPage = 1;
-
-  function paginate() {
-    const rows = [...document.querySelectorAll("#appBody tr")];
-    const totalPages = Math.ceil(rows.length / rowsPerPage);
-
-    rows.forEach((row, index) => {
-      row.style.display = (index >= (currentPage - 1) * rowsPerPage && index < currentPage * rowsPerPage) ? "" : "none";
-    });
-
-    const pagination = document.getElementById("paginationControls");
-    pagination.innerHTML = "";
-    for (let i = 1; i <= totalPages; i++) {
-      const btn = document.createElement("button");
-      btn.textContent = i;
-      btn.className = (i === currentPage) ? "active" : "";
-      btn.onclick = () => { currentPage = i; paginate(); };
-      pagination.appendChild(btn);
-    }
-  }
-
-  function filterTable() {
-    const filter = document.getElementById("searchInput").value.toLowerCase();
-    const rows = document.querySelectorAll("#appBody tr");
-    rows.forEach(row => {
-      row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
-    });
-  }
-
-  function toggleSelectAll(checkbox) {
-    document.querySelectorAll(".selectRow").forEach(cb => cb.checked = checkbox.checked);
-  }
-
-  async function deleteSelected() {
-    const confirmed = confirm("⚠️ Are you sure you want to permanently delete selected applications?");
-    if (!confirmed) return;
-
-    const selectedEmails = Array.from(document.querySelectorAll(".selectRow:checked"))
-      .map(cb => cb.closest("tr").children[3].innerText.trim());
-
-    if (selectedEmails.length === 0) {
-      alert("No rows selected.");
-      return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin - Applications</title>
+  <style>
+    body {
+      background-color: #111;
+      color: #f8f8f8;
+      font-family: Arial, sans-serif;
+      padding: 2rem;
     }
 
-    try {
-      const res = await fetch("/delete_applications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails: selectedEmails })
+    h1 {
+      text-align: center;
+      color: gold;
+      margin-bottom: 1rem;
+    }
+
+    .controls {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .controls input[type="text"] {
+      padding: 8px;
+      width: 300px;
+      border-radius: 5px;
+      border: none;
+      outline: none;
+    }
+
+    .controls button {
+      padding: 8px 12px;
+      margin-left: 8px;
+      border: none;
+      background: gold;
+      color: black;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      background-color: #222;
+    }
+
+    th, td {
+      border: 1px solid #444;
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background-color: #333;
+    }
+
+    img.thumbnail {
+      height: 50px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 3px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 100;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal img {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 10px;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .pagination {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .pagination button {
+      margin: 0 5px;
+      background-color: gold;
+      color: black;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .pagination .active {
+      background-color: #ffc107;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>⭐ CuteStars Applications</h1>
+
+  <div class="controls">
+    <input type="text" id="searchInput" placeholder="Search name, email, socials..." onkeyup="filterTable()">
+    <button onclick="exportCSV()">Export CSV</button>
+    <button onclick="deleteSelected()">Delete Selected</button>
+    <label style="margin-left: 1rem;">
+      <input type="checkbox" onclick="toggleSelectAll(this)"> Select All
+    </label>
+  </div>
+
+  <table id="appTable">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Name</th>
+        <th>Age</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th>Country</th>
+        <th>Socials</th>
+        <th>IP / Location</th>
+        <th>Photos</th>
+      </tr>
+    </thead>
+    <tbody id="appBody">
+      {% if apps %}
+        {% for app in apps|reverse %}
+        <tr>
+          <td><input type="checkbox" class="selectRow"></td>
+          <td>{{ app.name }}</td>
+          <td>{{ app.age }}</td>
+          <td>{{ app.email }}</td>
+          <td>{{ app.contact }}</td>
+          <td>{{ app.country }}</td>
+          <td>
+            {% if app.instagram %}<div>IG: {{ app.instagram }}</div>{% endif %}
+            {% if app.tiktok %}<div>TikTok: {{ app.tiktok }}</div>{% endif %}
+          </td>
+          <td>
+            <div><strong>IP:</strong> {{ app.ip or '—' }}</div>
+            <div><strong>City:</strong> {{ app.ip_city or '—' }}</div>
+            <div><strong>Country:</strong> {{ app.ip_country or '—' }}</div>
+            <div><strong>Postal:</strong> {{ app.ip_postal or '—' }}</div>
+            <div><strong>ISP:</strong> {{ app.ip_org or '—' }}</div>
+          </td>
+          <td>
+            {% for url in app.photos %}
+              <img src="{{ url }}" class="thumbnail" onclick="showImage('{{ url }}')">
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="9" style="text-align:center; color: gray;">No applications found.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- Pagination Controls -->
+  <div class="pagination" id="paginationControls"></div>
+
+  <!-- Full Image Modal -->
+  <div class="modal" id="imageModal" onclick="this.classList.remove('show')">
+    <img id="modalImg" src="" />
+  </div>
+
+  <script>
+    const rowsPerPage = 10;
+    let currentPage = 1;
+
+    function paginate() {
+      const rows = [...document.querySelectorAll("#appBody tr")];
+      const totalPages = Math.ceil(rows.length / rowsPerPage);
+
+      rows.forEach((row, index) => {
+        row.style.display = (index >= (currentPage - 1) * rowsPerPage && index < currentPage * rowsPerPage) ? "" : "none";
       });
 
-      const data = await res.json();
+      const pagination = document.getElementById("paginationControls");
+      pagination.innerHTML = "";
+      for (let i = 1; i <= totalPages; i++) {
+        const btn = document.createElement("button");
+        btn.textContent = i;
+        btn.className = (i === currentPage) ? "active" : "";
+        btn.onclick = () => { currentPage = i; paginate(); };
+        pagination.appendChild(btn);
+      }
+    }
 
-      if (res.ok) {
-        alert(`✅ ${data.deleted} application(s) permanently deleted.`);
-        location.reload();
-      } else {
-        alert("❌ Deletion failed: " + data.message);
+    function filterTable() {
+      const filter = document.getElementById("searchInput").value.toLowerCase();
+      const rows = document.querySelectorAll("#appBody tr");
+      rows.forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
+      });
+    }
+
+    function toggleSelectAll(checkbox) {
+      document.querySelectorAll(".selectRow").forEach(cb => cb.checked = checkbox.checked);
+    }
+
+    async function deleteSelected() {
+      const confirmed = confirm("⚠️ Are you sure you want to permanently delete selected applications?");
+      if (!confirmed) return;
+
+      const selectedEmails = Array.from(document.querySelectorAll(".selectRow:checked"))
+        .map(cb => cb.closest("tr").children[3].innerText.trim());
+
+      if (selectedEmails.length === 0) {
+        alert("No rows selected.");
+        return;
       }
 
-    } catch (err) {
-      console.error("Delete failed", err);
-      alert("❌ Server error during deletion.");
+      try {
+        const res = await fetch("/delete_applications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emails: selectedEmails })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          alert(`✅ ${data.deleted} application(s) permanently deleted.`);
+          location.reload();
+        } else {
+          alert("❌ Deletion failed: " + data.message);
+        }
+
+      } catch (err) {
+        console.error("Delete failed", err);
+        alert("❌ Server error during deletion.");
+      }
     }
-  }
 
-  function exportCSV() {
-    const rows = Array.from(document.querySelectorAll("#appTable tr"));
-    const csv = rows.map(row =>
-      Array.from(row.cells)
-        .map(cell => `"${cell.innerText.trim().replace(/"/g, '""')}"`)
-        .join(",")
-    ).join("\n");
+    function exportCSV() {
+      const rows = Array.from(document.querySelectorAll("#appTable tr"));
+      const csv = rows.map(row =>
+        Array.from(row.cells)
+          .map(cell => `"${cell.innerText.trim().replace(/"/g, '""')}"`)
+          .join(",")
+      ).join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "applications.csv";
-    link.click();
-  }
+      const blob = new Blob([csv], { type: "text/csv" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "applications.csv";
+      link.click();
+    }
 
-  function showImage(src) {
-    document.getElementById("modalImg").src = src;
-    document.getElementById("imageModal").classList.add("show");
-  }
+    function showImage(src) {
+      document.getElementById("modalImg").src = src;
+      document.getElementById("imageModal").classList.add("show");
+    }
 
-  window.onload = paginate;
-</script>
+    window.onload = paginate;
+  </script>
+
+</body>
+</html>
