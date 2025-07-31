@@ -29,6 +29,8 @@ const ApplicationForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -44,11 +46,9 @@ const ApplicationForm = () => {
     const validFiles = files.filter(file => file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024);
 
     if (validFiles.length !== files.length) {
-      toast({
-        title: "Invalid Files",
-        description: "Only image files under 10MB are allowed.",
-        variant: "destructive"
-      });
+      setErrorMessage("Only image files under 10MB are allowed.");
+      setShowErrorModal(true);
+      return;
     }
 
     const newPhotos = validFiles.map(file => ({
@@ -80,21 +80,15 @@ const ApplicationForm = () => {
     const { name, age, email, contact, photos } = formData;
 
     if (!name || !age || !email || !contact || photos.length === 0) {
-      toast({
-        title: "Missing Information",
-        description: "Please fill in all required fields and upload at least one photo.",
-        variant: "destructive"
-      });
+      setErrorMessage("Please fill in all required fields and upload at least one photo.");
+      setShowErrorModal(true);
       setIsSubmitting(false);
       return;
     }
 
     if (parseInt(age) < 18 || parseInt(age) > 35) {
-      toast({
-        title: "Age Requirement",
-        description: "Applicants must be between 18–35 years old",
-        variant: "destructive"
-      });
+      setErrorMessage("Applicants must be between 18–35 years old.");
+      setShowErrorModal(true);
       setIsSubmitting(false);
       return;
     }
@@ -130,11 +124,8 @@ const ApplicationForm = () => {
         photos: []
       });
     } catch (error) {
-      toast({
-        title: "Submission Failed",
-        description: error.response?.data?.message || "Something went wrong.",
-        variant: "destructive"
-      });
+      setErrorMessage(error.response?.data?.message || "Something went wrong. Please try again.");
+      setShowErrorModal(true);
     }
 
     setIsSubmitting(false);
@@ -297,7 +288,7 @@ const ApplicationForm = () => {
         </Card>
       </div>
 
-      {/* Success Modal */}
+      {/* ✅ Success Modal */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div className="bg-white rounded-lg p-6 shadow-xl max-w-sm w-full text-center">
@@ -306,6 +297,22 @@ const ApplicationForm = () => {
             <button
               onClick={() => setShowSuccessModal(false)}
               className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ❌ Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
+          <div className="bg-white rounded-lg p-6 shadow-xl max-w-sm w-full text-center">
+            <h2 className="text-xl font-semibold mb-2 text-red-600">Submission Error</h2>
+            <p className="text-gray-700 mb-4">{errorMessage}</p>
+            <button
+              onClick={() => setShowErrorModal(false)}
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded"
             >
               Close
             </button>
