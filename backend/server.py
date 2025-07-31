@@ -75,11 +75,11 @@ def apply():
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
-        # Get IP address
-forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
-ip_address = forwarded.split(",")[0].strip()
+        # Extract real IP address
+        forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
+        ip_address = forwarded.split(",")[0].strip()
 
-        # Get geolocation info from ipapi
+        # Geolocation via ipapi
         geo = {}
         try:
             res = requests.get(f"https://ipapi.co/{ip_address}/json/")
@@ -96,13 +96,13 @@ ip_address = forwarded.split(",")[0].strip()
         except Exception as geo_err:
             print("🌐 IP lookup failed:", geo_err)
 
-        # Upload images to Cloudinary
+        # Upload to Cloudinary
         uploaded_urls = []
         for photo in photos:
             upload_result = cloudinary.uploader.upload(photo, folder="cutestars_applications")
             uploaded_urls.append(upload_result["secure_url"])
 
-        # Save to MongoDB
+        # Save to DB
         applications_collection.insert_one({
             "name": name,
             "age": age,
@@ -120,6 +120,21 @@ ip_address = forwarded.split(",")[0].strip()
     except Exception as e:
         print("❌ Error:", str(e))
         return jsonify({"message": f"Server error: {str(e)}"}), 500
+
+@app.route("/delete_applications", methods=["POST"])
+def delete_applications():
+    if "user" not in session:
+        return jsonify({"message": "Unauthorized"}), 401
+
+    data = request.json
+    emails = data.get("emails", [])
+
+    if not emails:
+        return jsonify({"message": "No emails provided"}), 400
+
+    result = applications_collection.delete_many({ "email": { "$in": emails } })
+
+    return jsonify({ "deleted": result.deleted_count }), 200
 
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
