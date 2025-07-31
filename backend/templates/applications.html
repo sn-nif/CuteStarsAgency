@@ -52,6 +52,7 @@
       border: 1px solid #444;
       padding: 10px;
       text-align: left;
+      vertical-align: top;
     }
 
     th {
@@ -62,6 +63,7 @@
       height: 50px;
       border-radius: 6px;
       cursor: pointer;
+      margin: 3px;
     }
 
     .modal {
@@ -129,6 +131,7 @@
         <th>Phone</th>
         <th>Country</th>
         <th>Socials</th>
+        <th>IP / Location</th>
         <th>Photos</th>
       </tr>
     </thead>
@@ -144,6 +147,13 @@
         <td>
           {% if app.instagram %}<div>IG: {{ app.instagram }}</div>{% endif %}
           {% if app.tiktok %}<div>TikTok: {{ app.tiktok }}</div>{% endif %}
+        </td>
+        <td>
+          <div><strong>IP:</strong> {{ app.ip or '—' }}</div>
+          <div><strong>City:</strong> {{ app.ip_city or '—' }}</div>
+          <div><strong>Country:</strong> {{ app.ip_country or '—' }}</div>
+          <div><strong>Postal:</strong> {{ app.ip_postal or '—' }}</div>
+          <div><strong>ISP:</strong> {{ app.ip_org or '—' }}</div>
         </td>
         <td>
           {% for url in app.photos %}
