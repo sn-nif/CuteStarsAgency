@@ -2,12 +2,10 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { useToast } from "../hooks/use-toast";
-import { 
-  ArrowLeft, Crown, Upload, User, Mail, Phone, Calendar,
-  Instagram, X, Loader2
+import {
+  ArrowLeft, Crown, Upload, Loader2, X
 } from "lucide-react";
 import axios from "axios";
 
@@ -35,7 +33,7 @@ const ApplicationForm = () => {
 
   const handlePhotoUpload = (e) => {
     const files = Array.from(e.target.files);
-    const validFiles = files.filter(file => file.type.startsWith('image/') && file.size <= 10 * 1024 * 1024);
+    const validFiles = files.filter(file => file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024);
 
     if (validFiles.length !== files.length) {
       toast({
@@ -94,6 +92,7 @@ const ApplicationForm = () => {
     try {
       const applicationData = { ...formData };
       await axios.post(`${API}/apply`, applicationData);
+
       toast({
         title: "Application Submitted!",
         description: "We'll contact you within 48 hours."
@@ -147,68 +146,78 @@ const ApplicationForm = () => {
           </CardHeader>
 
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-5">
 
-              <div>
-                <Label htmlFor="name">Full Name *</Label>
-                <Input id="name" name="name" type="text" value={formData.name} onChange={handleInputChange} required />
+              {[
+                { id: "name", type: "text", placeholder: "Full Name *" },
+                { id: "age", type: "number", placeholder: "Age (18–35) *" },
+                { id: "email", type: "email", placeholder: "Email *" },
+                { id: "contact", type: "tel", placeholder: "Phone Number *" },
+                { id: "instagram", type: "text", placeholder: "Instagram" },
+                { id: "tiktok", type: "text", placeholder: "TikTok" },
+                { id: "twitter", type: "text", placeholder: "X / Twitter" }
+              ].map(field => (
+                <Input
+                  key={field.id}
+                  id={field.id}
+                  name={field.id}
+                  type={field.type}
+                  placeholder={field.placeholder}
+                  value={formData[field.id]}
+                  onChange={handleInputChange}
+                  required={field.placeholder.includes("*")}
+                  className="w-full bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 focus:border-yellow-500 focus:ring-yellow-500/30"
+                />
+              ))}
+
+              {/* Photo Upload Section */}
+              <div className="bg-gray-800/40 border-2 border-dashed border-gray-600 hover:border-yellow-500 rounded-xl p-6 text-center transition-all">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  id="photo-upload"
+                />
+                <label htmlFor="photo-upload" className="cursor-pointer block">
+                  <Upload className="w-8 h-8 mx-auto text-yellow-400 mb-2" />
+                  <p className="text-sm text-gray-300">Upload up to 5 photos</p>
+                  <p className="text-xs text-gray-500">Max size: 10MB each</p>
+                </label>
               </div>
 
-              <div>
-                <Label htmlFor="age">Age *</Label>
-                <Input id="age" name="age" type="number" value={formData.age} onChange={handleInputChange} required />
-              </div>
-
-              <div>
-                <Label htmlFor="email">Email *</Label>
-                <Input id="email" name="email" type="email" value={formData.email} onChange={handleInputChange} required />
-              </div>
-
-              <div>
-                <Label htmlFor="contact">Phone *</Label>
-                <Input id="contact" name="contact" type="tel" value={formData.contact} onChange={handleInputChange} required />
-              </div>
-
-              <div>
-                <Label htmlFor="instagram">Instagram</Label>
-                <Input id="instagram" name="instagram" type="text" value={formData.instagram} onChange={handleInputChange} />
-              </div>
-
-              <div>
-                <Label htmlFor="tiktok">TikTok</Label>
-                <Input id="tiktok" name="tiktok" type="text" value={formData.tiktok} onChange={handleInputChange} />
-              </div>
-
-              <div>
-                <Label htmlFor="twitter">X / Twitter</Label>
-                <Input id="twitter" name="twitter" type="text" value={formData.twitter} onChange={handleInputChange} />
-              </div>
-
-              <div>
-                <Label htmlFor="photos">Upload Photos (optional)</Label>
-                <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} />
-              </div>
-
-              {/* Upload progress bar (optional) */}
               {uploadProgress > 0 && (
                 <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div className="bg-yellow-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                  <div
+                    className="bg-yellow-400 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
                 </div>
               )}
 
-              {/* Photo previews */}
               {formData.photos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {formData.photos.map(photo => (
                     <div key={photo.id} className="relative">
-                      <img src={photo.url} alt="preview" className="w-full h-20 object-cover rounded" />
-                      <button type="button" onClick={() => removePhoto(photo.id)} className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs">×</button>
+                      <img src={photo.url} alt={photo.name} className="w-full h-20 object-cover rounded-lg border border-gray-600" />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(photo.id)}
+                        className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-xs"
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
               )}
 
-              <Button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:to-yellow-700 text-black py-3 rounded-xl text-lg font-semibold" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:to-yellow-700 text-black py-3 rounded-xl text-lg font-semibold"
+              >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -218,6 +227,10 @@ const ApplicationForm = () => {
                   "Submit Application"
                 )}
               </Button>
+
+              <p className="text-xs text-gray-500 text-center">
+                By submitting, you agree to be contacted by Cute Stars Agency
+              </p>
             </form>
           </CardContent>
         </Card>
