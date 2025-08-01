@@ -14,202 +14,34 @@ import "react-phone-input-2/lib/style.css";
 const API = "https://cutestars-backend.onrender.com";
 
 const countries = [
-  "Afghanistan",
-  "Albania",
-  "Algeria",
-  "Andorra",
-  "Angola",
-  "Antigua and Barbuda",
-  "Argentina",
-  "Armenia",
-  "Australia",
-  "Austria",
-  "Azerbaijan",
-  "Bahamas",
-  "Bahrain",
-  "Bangladesh",
-  "Barbados",
-  "Belarus",
-  "Belgium",
-  "Belize",
-  "Benin",
-  "Bhutan",
-  "Bolivia",
-  "Bosnia and Herzegovina",
-  "Botswana",
-  "Brazil",
-  "Brunei",
-  "Bulgaria",
-  "Burkina Faso",
-  "Burundi",
-  "Cabo Verde",
-  "Cambodia",
-  "Cameroon",
-  "Canada",
-  "Central African Republic",
-  "Chad",
-  "Chile",
-  "China",
-  "Colombia",
-  "Comoros",
-  "Congo (Brazzaville)",
-  "Congo (Kinshasa)",
-  "Costa Rica",
-  "Croatia",
-  "Cuba",
-  "Cyprus",
-  "Czechia",
-  "Denmark",
-  "Djibouti",
-  "Dominica",
-  "Dominican Republic",
-  "Ecuador",
-  "Egypt",
-  "El Salvador",
-  "Equatorial Guinea",
-  "Eritrea",
-  "Estonia",
-  "Eswatini",
-  "Ethiopia",
-  "Fiji",
-  "Finland",
-  "France",
-  "Gabon",
-  "Gambia",
-  "Georgia",
-  "Germany",
-  "Ghana",
-  "Greece",
-  "Grenada",
-  "Guatemala",
-  "Guinea",
-  "Guinea-Bissau",
-  "Guyana",
-  "Haiti",
-  "Honduras",
-  "Hungary",
-  "Iceland",
-  "India",
-  "Indonesia",
-  "Iran",
-  "Iraq",
-  "Ireland",
-  "Israel",
-  "Italy",
-  "Ivory Coast",
-  "Jamaica",
-  "Japan",
-  "Jordan",
-  "Kazakhstan",
-  "Kenya",
-  "Kiribati",
-  "Kuwait",
-  "Kyrgyzstan",
-  "Laos",
-  "Latvia",
-  "Lebanon",
-  "Lesotho",
-  "Liberia",
-  "Libya",
-  "Liechtenstein",
-  "Lithuania",
-  "Luxembourg",
-  "Madagascar",
-  "Malawi",
-  "Malaysia",
-  "Maldives",
-  "Mali",
-  "Malta",
-  "Marshall Islands",
-  "Mauritania",
-  "Mauritius",
-  "Mexico",
-  "Micronesia",
-  "Moldova",
-  "Monaco",
-  "Mongolia",
-  "Montenegro",
-  "Morocco",
-  "Mozambique",
-  "Myanmar",
-  "Namibia",
-  "Nauru",
-  "Nepal",
-  "Netherlands",
-  "New Zealand",
-  "Nicaragua",
-  "Niger",
-  "Nigeria",
-  "North Korea",
-  "North Macedonia",
-  "Norway",
-  "Oman",
-  "Pakistan",
-  "Palau",
-  "Palestine",
-  "Panama",
-  "Papua New Guinea",
-  "Paraguay",
-  "Peru",
-  "Philippines",
-  "Poland",
-  "Portugal",
-  "Qatar",
-  "Romania",
-  "Russia",
-  "Rwanda",
-  "Saint Kitts and Nevis",
-  "Saint Lucia",
-  "Saint Vincent and the Grenadines",
-  "Samoa",
-  "San Marino",
-  "Sao Tome and Principe",
-  "Saudi Arabia",
-  "Senegal",
-  "Serbia",
-  "Seychelles",
-  "Sierra Leone",
-  "Singapore",
-  "Slovakia",
-  "Slovenia",
-  "Solomon Islands",
-  "Somalia",
-  "South Africa",
-  "South Korea",
-  "South Sudan",
-  "Spain",
-  "Sri Lanka",
-  "Sudan",
-  "Suriname",
-  "Sweden",
-  "Switzerland",
-  "Syria",
-  "Taiwan",
-  "Tajikistan",
-  "Tanzania",
-  "Thailand",
-  "Timor-Leste",
-  "Togo",
-  "Tonga",
-  "Trinidad and Tobago",
-  "Tunisia",
-  "Turkey",
-  "Turkmenistan",
-  "Tuvalu",
-  "Uganda",
-  "Ukraine",
-  "United Arab Emirates",
-  "United Kingdom",
-  "United States",
-  "Uruguay",
-  "Uzbekistan",
-  "Vanuatu",
-  "Vatican City",
-  "Venezuela",
-  "Vietnam",
-  "Yemen",
-  "Zambia",
-  "Zimbabwe"
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda",
+  "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain",
+  "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia",
+  "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso",
+  "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic",
+  "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Brazzaville)", "Congo (Kinshasa)",
+  "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Denmark", "Djibouti", "Dominica",
+  "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea",
+  "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia",
+  "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
+  "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland",
+  "Israel", "Italy", "Ivory Coast", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya",
+  "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia",
+  "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia",
+  "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico",
+  "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique",
+  "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger",
+  "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau",
+  "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland",
+  "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia",
+  "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe",
+  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia",
+  "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan",
+  "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
+  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago",
+  "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates",
+  "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
+  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
 ];
 
 const ApplicationForm = () => {
@@ -241,9 +73,9 @@ const ApplicationForm = () => {
 
   const handlePhotoUpload = (e) => {
     const files = Array.from(e.target.files);
-    const validFiles = files.filter(file => file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024);
+    const validFiles = files.filter(file => file.type.startsWith("image/")); // ← size limit removed
     if (validFiles.length !== files.length) {
-      setErrorMessage("Only image files under 10MB are allowed.");
+      setErrorMessage("Only image files are allowed.");
       setShowErrorModal(true);
       return;
     }
@@ -345,22 +177,13 @@ const ApplicationForm = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5">
               <Input name="name" placeholder="Full Name *" value={formData.name} onChange={handleInputChange} required className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600" />
-
-              <select
-                name="age"
-                value={formData.age}
-                onChange={handleInputChange}
-                required
-                className="w-full bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 rounded-lg py-2 px-3"
-              >
+              <select name="age" value={formData.age} onChange={handleInputChange} required className="w-full bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 rounded-lg py-2 px-3">
                 <option value="">Select your age *</option>
                 {Array.from({ length: 52 }, (_, i) => 18 + i).map((age) => (
                   <option key={age} value={age}>{age}</option>
                 ))}
               </select>
-
               <Input name="email" type="email" placeholder="Email *" value={formData.email} onChange={handleInputChange} required className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600" />
-
               <div className="bg-gray-800/40 border border-gray-600 rounded-lg px-3 py-2">
                 <PhoneInput
                   country={'us'}
@@ -373,33 +196,23 @@ const ApplicationForm = () => {
                   required
                 />
               </div>
-
-              <select
-                name="country"
-                value={formData.country}
-                onChange={handleInputChange}
-                required
-                className="w-full bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 rounded-lg py-2 px-3"
-              >
+              <select name="country" value={formData.country} onChange={handleInputChange} required className="w-full bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 rounded-lg py-2 px-3">
                 <option value="">Select your nationality *</option>
                 {countries.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-
               <Input name="instagram" placeholder="Instagram (optional)" value={formData.instagram} onChange={handleInputChange} className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600" />
               <Input name="tiktok" placeholder="TikTok (optional)" value={formData.tiktok} onChange={handleInputChange} className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600" />
               <Input name="telegram" placeholder="Telegram (optional)" value={formData.telegram} onChange={handleInputChange} className="bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600" />
-
               <div className="bg-gray-800/40 border-2 border-dashed border-gray-600 hover:border-yellow-500 rounded-xl p-6 text-center">
                 <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" id="photo-upload" />
                 <label htmlFor="photo-upload" className="cursor-pointer block text-yellow-400">
                   <Upload className="w-8 h-8 mx-auto mb-2" />
                   <p>Upload up to 5 photos *</p>
-                  <p className="text-xs text-gray-500">Max size: 10MB each</p>
+                  <p className="text-xs text-gray-500">Only image files accepted</p>
                 </label>
               </div>
-
               {formData.photos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {formData.photos.map(photo => (
@@ -410,7 +223,6 @@ const ApplicationForm = () => {
                   ))}
                 </div>
               )}
-
               <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:to-yellow-700 text-black py-3 rounded-xl text-lg font-semibold">
                 {isSubmitting ? (
                   <>
@@ -427,7 +239,6 @@ const ApplicationForm = () => {
         </Card>
       </div>
 
-      {/* Success Modal */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div className="bg-white rounded-lg p-6 shadow-xl max-w-sm w-full text-center">
@@ -438,7 +249,6 @@ const ApplicationForm = () => {
         </div>
       )}
 
-      {/* Error Modal */}
       {showErrorModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
           <div className="bg-white rounded-lg p-6 shadow-xl max-w-sm w-full text-center">
