@@ -28,6 +28,39 @@ cloudinary.config(
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
 
+# Telegram notifier
+def send_application_to_telegram(data, photo_urls=[]):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    message = f"📥 *New Application Received*\n\n" \
+              f"👤 *Name:* {data.get('name')}\n" \
+              f"🎂 *Age:* {data.get('age')}\n" \
+              f"📧 *Email:* {data.get('email')}\n" \
+              f"📱 *Phone:* {data.get('contact')}\n" \
+              f"🌍 *Nationality:* {data.get('country')}\n"
+
+    if data.get('instagram'):
+        message += f"📸 *Instagram:* {data.get('instagram')}\n"
+    if data.get('tiktok'):
+        message += f"🎵 *TikTok:* {data.get('tiktok')}\n"
+    if data.get('telegram'):
+        message += f"📬 *Telegram:* @{data.get('telegram')}\n"
+
+    if photo_urls:
+        message += "\n🖼️ *Photos:*\n"
+        for i, url in enumerate(photo_urls):
+            message += f"🔗 [Photo {i+1}]({url})\n"
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+        )
+    except Exception as e:
+        print("❌ Telegram notification failed:", str(e))
+
+
 # Admin credentials
 USERNAME = "admin"
 PASSWORD = "Stars2025!"
@@ -70,72 +103,11 @@ def apply():
         country = request.form.get("country")
         instagram = request.form.get("instagram")
         tiktok = request.form.get("tiktok")
+        telegram = request.form.get("telegram")
         photos = request.files.getlist("photos")
 
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
         # Extract real IP address
-        forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
-        ip_address = forwarded.split(",")[0].strip()
-
-        # Geolocation via ipapi
-        geo = {}
-        try:
-            res = requests.get(f"https://ipapi.co/{ip_address}/json/")
-            if res.status_code == 200:
-                data = res.json()
-                geo = {
-                    "ip": ip_address,
-                    "ip_country": data.get("country_name"),
-                    "ip_city": data.get("city"),
-                    "ip_region": data.get("region"),
-                    "ip_postal": data.get("postal"),
-                    "ip_org": data.get("org")
-                }
-        except Exception as geo_err:
-            print("🌐 IP lookup failed:", geo_err)
-
-        # Upload to Cloudinary
-        uploaded_urls = []
-        for photo in photos:
-            upload_result = cloudinary.uploader.upload(photo, folder="cutestars_applications")
-            uploaded_urls.append(upload_result["secure_url"])
-
-        # Save to DB
-        applications_collection.insert_one({
-            "name": name,
-            "age": age,
-            "email": email,
-            "contact": contact,
-            "country": country,
-            "instagram": instagram,
-            "tiktok": tiktok,
-            "photos": uploaded_urls,
-            **geo
-        })
-
-        return jsonify({"message": "Application received successfully."}), 200
-
-    except Exception as e:
-        print("❌ Error:", str(e))
-        return jsonify({"message": f"Server error: {str(e)}"}), 500
-
-@app.route("/delete_applications", methods=["POST"])
-def delete_applications():
-    if "user" not in session:
-        return jsonify({"message": "Unauthorized"}), 401
-
-    data = request.json
-    emails = data.get("emails", [])
-
-    if not emails:
-        return jsonify({"message": "No emails provided"}), 400
-
-    result = applications_collection.delete_many({ "email": { "$in": emails } })
-
-    return jsonify({ "deleted": result.deleted_count }), 200
-
-if __name__ == "__main__":
-    print("✅ Flask server ready on port", PORT)
-    app.run(host="0.0.0.0", port=PORT)
+        forwarded = request.headers.get("X-For
