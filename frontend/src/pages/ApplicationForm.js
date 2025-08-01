@@ -223,13 +223,34 @@ const ApplicationForm = () => {
     instagram: "",
     tiktok: "",
     telegram: "",
-    photos: []
+    photos: [],
+    ip: "",
+    geoCountry: "",
+    geoCity: "",
+    geoRegion: ""
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-
+  useEffect(() => {
+  const fetchGeoInfo = async () => {
+    try {
+      const res = await fetch("https://ipapi.co/json/");
+      const data = await res.json();
+      setFormData(prev => ({
+        ...prev,
+        ip: data.ip || "",
+        geoCountry: data.country_name || "",
+        geoCity: data.city || "",
+        geoRegion: data.region || ""
+      }));
+    } catch (err) {
+      console.error("Failed to fetch geo info", err);
+    }
+  };
+  fetchGeoInfo();
+}, []);
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -308,6 +329,10 @@ const ApplicationForm = () => {
         tiktok: "",
         telegram: "",
         photos: []
+        ip: "",
+        geoCountry: "",
+        geoCity: "",
+        geoRegion: ""
       });
     } catch (error) {
       setErrorMessage(error.response?.data?.message || "Server error.");
