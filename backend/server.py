@@ -118,6 +118,10 @@ def apply():
         tiktok = request.form.get("tiktok")
         telegram = request.form.get("telegram")
         photos = request.files.getlist("photos")
+
+        # 🛠️ Fix: Declare geo before use
+        geo = {}
+
         # Optional client-side geo fields
         client_ip = request.form.get("ip")
         client_city = request.form.get("geoCity")
@@ -136,22 +140,20 @@ def apply():
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
+        # Backup IP lookup (optional)
         forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
         ip_address = forwarded.split(",")[0].strip()
 
-        geo = {}
         try:
             res = requests.get(f"https://ipapi.co/{ip_address}/json/")
             if res.status_code == 200:
                 data = res.json()
-                geo = {
-                    "ip": ip_address,
-                    "ip_country": data.get("country_name"),
-                    "ip_city": data.get("city"),
-                    "ip_region": data.get("region"),
-                    "ip_postal": data.get("postal"),
-                    "ip_org": data.get("org")
-                }
+                geo.setdefault("ip", ip_address)
+                geo.setdefault("ip_country", data.get("country_name"))
+                geo.setdefault("ip_city", data.get("city"))
+                geo.setdefault("ip_region", data.get("region"))
+                geo["ip_postal"] = data.get("postal")
+                geo["ip_org"] = data.get("org")
         except Exception as geo_err:
             print("🌐 IP lookup failed:", geo_err)
 
@@ -181,7 +183,6 @@ def apply():
     except Exception as e:
         print("❌ Error:", str(e))
         return jsonify({"message": f"Server error: {str(e)}"}), 500
-
 
 @app.route("/delete_applications", methods=["POST"])
 def delete_applications():
