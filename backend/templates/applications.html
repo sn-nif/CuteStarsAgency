@@ -145,6 +145,11 @@
             <th>Email</th>
             <th>Phone</th>
             <th>Country</th>
+            <th>IP</th>
+            <th>City</th>
+            <th>Region</th>
+            <th>Country</th>
+            <th>ISP</th>
             <th>Photos</th>
           </tr>
         </thead>
@@ -268,6 +273,11 @@
               <td>${app.email}</td>
               <td>${app.contact}</td>
               <td>${app.country}</td>
+              <td>${app.ip || "—"}</td>
+              <td>${app.ip_city || "—"}</td>
+              <td>${app.ip_region || "—"}</td>
+              <td>${app.ip_country || "—"}</td>
+              <td>${app.ip_org || "—"}</td>
               <td>
                 ${app.photos.map(url => `<img src="${url}" onclick="viewImage('${url}')" />`).join("")}
               </td>
