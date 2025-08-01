@@ -73,12 +73,39 @@
     </div>
 
     <div id="settingsSection" style="display: none;">
-      <h1>Settings</h1>
-      <!-- We'll add forms here in the next step -->
-      <p>Settings content will go here.</p>
-    </div>
-  </div>
+  <h1>Settings</h1>
 
+  <!-- Change Admin Credentials -->
+  <h2 style="color: gold;">🔐 Change Admin Username & Password</h2>
+  <form id="changeAdminForm">
+    <input type="text" id="newUsername" placeholder="New Username" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
+    <input type="password" id="newPassword" placeholder="New Password" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
+    <button type="submit" style="background-color: gold; color: black; padding: 10px 20px;">Update Admin</button>
+  </form>
+
+  <hr style="margin: 30px 0; border: 1px solid #333;" />
+
+  <!-- Add New User -->
+  <h2 style="color: gold;">➕ Add New User</h2>
+  <form id="addUserForm">
+    <input type="text" id="newUser" placeholder="Username" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
+    <input type="password" id="newUserPassword" placeholder="Password" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
+    <label style="display: block; margin: 5px 0;">Permissions:</label>
+    <label><input type="checkbox" name="perm" value="view"> View</label>
+    <label><input type="checkbox" name="perm" value="edit"> Edit</label>
+    <label><input type="checkbox" name="perm" value="delete"> Delete</label>
+    <br />
+    <button type="submit" style="margin-top: 10px; background-color: gold; color: black; padding: 10px 20px;">Add User</button>
+  </form>
+
+  <hr style="margin: 30px 0; border: 1px solid #333;" />
+
+  <!-- Users Table (to be dynamically filled) -->
+  <h2 style="color: gold;">👥 Manage Users</h2>
+  <div id="userList">
+    <p>Loading user list...</p>
+  </div>
+</div>
   <!-- Tab Switch Script -->
   <script>
     const applicationsTab = document.getElementById("applicationsTab");
