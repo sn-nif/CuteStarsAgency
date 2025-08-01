@@ -147,12 +147,14 @@ const ApplicationForm = () => {
         if (key === "photos") {
           formData.photos.forEach(p => form.append("photos", p.file));
         } else {
-          form.append(key, formData[key]);
+          form.append(key, formData[key] ?? "");
         }
       }
+
       await axios.post(`${API}/apply`, form, {
         headers: { "Content-Type": "multipart/form-data" }
       });
+
       setShowSuccessModal(true);
       setFormData({
         name: "",
@@ -178,9 +180,7 @@ const ApplicationForm = () => {
   };
 
   return (
-    // ... full UI as already included in your provided code ...
-    // No changes needed to the return JSX
-    // IP/Geo fields are handled invisibly in backend submission
+    // ... your full form JSX here (unchanged) ...
   );
 };
 
