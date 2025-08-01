@@ -47,7 +47,6 @@ def send_application_to_telegram(data, photo_urls=[]):
     if data.get('telegram'):
         message += f"📬 *Telegram:* @{data.get('telegram')}\n"
 
-    # ➕ Include IP and geo details
     if data.get('ip'):
         message += f"\n🛰️ *IP Address:* {data.get('ip')}\n"
     if data.get('ip_city') or data.get('ip_country'):
@@ -117,34 +116,47 @@ def apply():
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
-        # Extract real IP address
-        forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
-        ip_address = forwarded.split(",")[0].strip()
+        # Use frontend-provided IP/Geo if present
+        ip = request.form.get("ip")
+        geo_country = request.form.get("geoCountry")
+        geo_city = request.form.get("geoCity")
+        geo_region = request.form.get("geoRegion")
 
-        # Geolocation via ipapi
         geo = {}
-        try:
-            res = requests.get(f"https://ipapi.co/{ip_address}/json/")
-            if res.status_code == 200:
-                data = res.json()
-                geo = {
-                    "ip": ip_address,
-                    "ip_country": data.get("country_name"),
-                    "ip_city": data.get("city"),
-                    "ip_region": data.get("region"),
-                    "ip_postal": data.get("postal"),
-                    "ip_org": data.get("org")
-                }
-        except Exception as geo_err:
-            print("🌐 IP lookup failed:", geo_err)
+        if ip and geo_country:
+            geo = {
+                "ip": ip,
+                "ip_country": geo_country,
+                "ip_city": geo_city,
+                "ip_region": geo_region
+            }
+        else:
+            # Fallback: extract IP server-side and use ipapi
+            forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
+            ip_address = forwarded.split(",")[0].strip()
 
-        # Upload to Cloudinary
+            try:
+                res = requests.get(f"https://ipapi.co/{ip_address}/json/")
+                if res.status_code == 200:
+                    data = res.json()
+                    geo = {
+                        "ip": ip_address,
+                        "ip_country": data.get("country_name"),
+                        "ip_city": data.get("city"),
+                        "ip_region": data.get("region"),
+                        "ip_postal": data.get("postal"),
+                        "ip_org": data.get("org")
+                    }
+            except Exception as geo_err:
+                print("🌐 IP lookup failed:", geo_err)
+
+        # Upload photos to Cloudinary
         uploaded_urls = []
         for photo in photos:
             upload_result = cloudinary.uploader.upload(photo, folder="cutestars_applications")
             uploaded_urls.append(upload_result["secure_url"])
 
-        # Save to DB
+        # Final application object
         applicant_data = {
             "name": name,
             "age": age,
@@ -157,9 +169,8 @@ def apply():
             "photos": uploaded_urls,
             **geo
         }
-        applications_collection.insert_one(applicant_data)
 
-        # ✅ Send Telegram alert
+        applications_collection.insert_one(applicant_data)
         send_application_to_telegram(applicant_data, uploaded_urls)
 
         return jsonify({"message": "Application received successfully."}), 200
