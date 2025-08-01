@@ -53,80 +53,286 @@
       color: gold;
       text-align: center;
     }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      background-color: #222;
+    }
+
+    th, td {
+      border: 1px solid #333;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #333;
+      color: gold;
+    }
+
+    td img {
+      width: 50px;
+      height: 50px;
+      object-fit: cover;
+      cursor: pointer;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.8);
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal img {
+      max-width: 90vw;
+      max-height: 90vh;
+    }
+
+    .controls {
+      margin: 20px 0;
+    }
+
+    .controls input {
+      padding: 10px;
+      width: 300px;
+      border-radius: 4px;
+      border: none;
+      margin-right: 10px;
+    }
+
+    .controls button {
+      padding: 10px 15px;
+      background-color: gold;
+      border: none;
+      cursor: pointer;
+      color: black;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
 
-  <!-- Sidebar -->
   <div class="sidebar">
     <h2>Admin Panel</h2>
     <button id="applicationsTab" class="active">📄 Applications</button>
     <button id="settingsTab">⚙️ Settings</button>
   </div>
 
-  <!-- Main Content Area -->
   <div class="main-content">
+    <!-- Applications Section -->
     <div id="applicationsSection">
       <h1>Applications</h1>
-      <!-- Insert your applications table and controls here -->
-      <p>Application management content goes here.</p>
+      <div class="controls">
+        <input type="text" id="searchBox" placeholder="Search by name, email, phone..." />
+        <button onclick="exportToCSV()">Export CSV</button>
+        <button onclick="deleteSelected()">Delete Selected</button>
+      </div>
+      <table id="appsTable">
+        <thead>
+          <tr>
+            <th><input type="checkbox" onclick="toggleAll(this)" /></th>
+            <th>Name</th>
+            <th>Age</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Country</th>
+            <th>Photos</th>
+          </tr>
+        </thead>
+        <tbody id="appsBody">
+          <!-- Filled dynamically -->
+        </tbody>
+      </table>
     </div>
 
+    <!-- Settings Section -->
     <div id="settingsSection" style="display: none;">
-  <h1>Settings</h1>
+      <h1>Settings</h1>
 
-  <!-- Change Admin Credentials -->
-  <h2 style="color: gold;">🔐 Change Admin Username & Password</h2>
-  <form id="changeAdminForm">
-    <input type="text" id="newUsername" placeholder="New Username" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
-    <input type="password" id="newPassword" placeholder="New Password" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
-    <button type="submit" style="background-color: gold; color: black; padding: 10px 20px;">Update Admin</button>
-  </form>
+      <!-- Change Admin Credentials -->
+      <h2 style="color: gold;">🔐 Change Admin Username & Password</h2>
+      <form id="changeAdminForm">
+        <input type="text" id="newUsername" placeholder="New Username" required />
+        <input type="password" id="newPassword" placeholder="New Password" required />
+        <button type="submit">Update Admin</button>
+      </form>
 
-  <hr style="margin: 30px 0; border: 1px solid #333;" />
+      <hr style="margin: 30px 0; border: 1px solid #333;" />
 
-  <!-- Add New User -->
-  <h2 style="color: gold;">➕ Add New User</h2>
-  <form id="addUserForm">
-    <input type="text" id="newUser" placeholder="Username" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
-    <input type="password" id="newUserPassword" placeholder="Password" required style="margin-bottom: 10px; width: 100%; padding: 10px;" />
-    <label style="display: block; margin: 5px 0;">Permissions:</label>
-    <label><input type="checkbox" name="perm" value="view"> View</label>
-    <label><input type="checkbox" name="perm" value="edit"> Edit</label>
-    <label><input type="checkbox" name="perm" value="delete"> Delete</label>
-    <br />
-    <button type="submit" style="margin-top: 10px; background-color: gold; color: black; padding: 10px 20px;">Add User</button>
-  </form>
+      <!-- Add New User -->
+      <h2 style="color: gold;">➕ Add New User</h2>
+      <form id="addUserForm">
+        <input type="text" id="newUser" placeholder="Username" required />
+        <input type="password" id="newUserPassword" placeholder="Password" required />
+        <div>
+          <label><input type="checkbox" name="perm" value="view" /> View</label>
+          <label><input type="checkbox" name="perm" value="edit" /> Edit</label>
+          <label><input type="checkbox" name="perm" value="delete" /> Delete</label>
+        </div>
+        <button type="submit">Add User</button>
+      </form>
 
-  <hr style="margin: 30px 0; border: 1px solid #333;" />
+      <hr style="margin: 30px 0; border: 1px solid #333;" />
 
-  <!-- Users Table (to be dynamically filled) -->
-  <h2 style="color: gold;">👥 Manage Users</h2>
-  <div id="userList">
-    <p>Loading user list...</p>
+      <h2 style="color: gold;">👥 Users</h2>
+      <div id="userList">
+        <p>Loading...</p>
+      </div>
+    </div>
   </div>
-</div>
-  <!-- Tab Switch Script -->
+
+  <!-- Image Modal -->
+  <div class="modal" id="imageModal" onclick="this.style.display='none'">
+    <img id="modalImage" src="" />
+  </div>
+
   <script>
     const applicationsTab = document.getElementById("applicationsTab");
     const settingsTab = document.getElementById("settingsTab");
     const applicationsSection = document.getElementById("applicationsSection");
     const settingsSection = document.getElementById("settingsSection");
 
-    applicationsTab.addEventListener("click", () => {
+    applicationsTab.onclick = () => {
       applicationsSection.style.display = "block";
       settingsSection.style.display = "none";
       applicationsTab.classList.add("active");
       settingsTab.classList.remove("active");
-    });
+    };
 
-    settingsTab.addEventListener("click", () => {
+    settingsTab.onclick = () => {
       applicationsSection.style.display = "none";
       settingsSection.style.display = "block";
       settingsTab.classList.add("active");
       applicationsTab.classList.remove("active");
-    });
+      loadUsers();
+    };
+
+    function toggleAll(master) {
+      document.querySelectorAll("#appsBody input[type='checkbox']").forEach(cb => {
+        cb.checked = master.checked;
+      });
+    }
+
+    function deleteSelected() {
+      const selected = Array.from(document.querySelectorAll("#appsBody input[type='checkbox']:checked"))
+        .map(cb => cb.dataset.email);
+      if (!selected.length) return alert("Select at least one.");
+      fetch("/delete_applications", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ emails: selected })
+      }).then(res => res.json()).then(data => {
+        alert("Deleted " + data.deleted + " applications.");
+        location.reload();
+      });
+    }
+
+    function exportToCSV() {
+      const rows = [["Name", "Age", "Email", "Phone", "Country"]];
+      document.querySelectorAll("#appsBody tr").forEach(tr => {
+        const cols = Array.from(tr.querySelectorAll("td")).map(td => td.innerText);
+        rows.push(cols.slice(1, 6)); // skip checkbox
+      });
+      const csv = rows.map(r => r.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "applications.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function loadApplications() {
+      fetch("/applications")
+        .then(res => res.text())
+        .then(html => {
+          const data = JSON.parse(document.body.querySelector("script[type='application/json']").textContent);
+          const body = document.getElementById("appsBody");
+          body.innerHTML = "";
+          data.forEach(app => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+              <td><input type="checkbox" data-email="${app.email}" /></td>
+              <td>${app.name}</td>
+              <td>${app.age}</td>
+              <td>${app.email}</td>
+              <td>${app.contact}</td>
+              <td>${app.country}</td>
+              <td>
+                ${app.photos.map(url => `<img src="${url}" onclick="viewImage('${url}')" />`).join("")}
+              </td>
+            `;
+            body.appendChild(row);
+          });
+        });
+    }
+
+    function viewImage(url) {
+      const modal = document.getElementById("imageModal");
+      const img = document.getElementById("modalImage");
+      img.src = url;
+      modal.style.display = "flex";
+    }
+
+    function loadUsers() {
+      fetch("/api/users")
+        .then(res => res.json())
+        .then(users => {
+          const container = document.getElementById("userList");
+          if (!users.length) {
+            container.innerHTML = "<p>No users found.</p>";
+            return;
+          }
+          container.innerHTML = "<ul>" + users.map(u =>
+            `<li><strong>${u.username}</strong> – ${u.permissions.join(", ")}</li>`
+          ).join("") + "</ul>";
+        });
+    }
+
+    document.getElementById("changeAdminForm").onsubmit = e => {
+      e.preventDefault();
+      const username = document.getElementById("newUsername").value;
+      const password = document.getElementById("newPassword").value;
+      fetch("/api/update-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      }).then(res => res.json()).then(data => {
+        alert(data.status || data.error);
+      });
+    };
+
+    document.getElementById("addUserForm").onsubmit = e => {
+      e.preventDefault();
+      const username = document.getElementById("newUser").value;
+      const password = document.getElementById("newUserPassword").value;
+      const permissions = Array.from(document.querySelectorAll("input[name='perm']:checked")).map(cb => cb.value);
+      fetch("/api/add-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, permissions })
+      }).then(res => res.json()).then(data => {
+        alert(data.status || data.error);
+        loadUsers();
+      });
+    };
+
+    loadApplications();
   </script>
 
+  <!-- Injected data -->
+  <script type="application/json">
+    {{ apps|tojson }}
+  </script>
 </body>
 </html>
