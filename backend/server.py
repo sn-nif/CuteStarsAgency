@@ -110,4 +110,4 @@ def apply():
             return jsonify({"message": "Missing required fields or photos."}), 400
 
         # Extract real IP address
-        forwarded = request.headers.get("X-For
+forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
