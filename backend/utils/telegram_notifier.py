@@ -24,7 +24,10 @@ def send_application_to_telegram(data, photo_urls=[]):
         for i, url in enumerate(photo_urls):
             message += f"🔗 [Photo {i+1}]({url})\n"
 
-    requests.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-    )
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+        )
+    except Exception as e:
+        print("❌ Telegram notification failed:", str(e))
