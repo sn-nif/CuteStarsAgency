@@ -176,7 +176,16 @@ const ApplicationForm = () => {
   };
 
   return (
-    // ... your full JSX stays unchanged and is expected to render the form
+    <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <Card className="w-full max-w-lg border-gray-700 bg-gray-900">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold text-yellow-400">Luxury Application</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-gray-400 text-center mb-4">Your journey starts here.</p>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
