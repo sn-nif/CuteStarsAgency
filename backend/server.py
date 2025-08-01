@@ -118,6 +118,20 @@ def apply():
         tiktok = request.form.get("tiktok")
         telegram = request.form.get("telegram")
         photos = request.files.getlist("photos")
+        # Optional client-side geo fields
+        client_ip = request.form.get("ip")
+        client_city = request.form.get("geoCity")
+        client_country = request.form.get("geoCountry")
+        client_region = request.form.get("geoRegion")
+
+        if client_ip:
+            geo["ip"] = client_ip
+        if client_city:
+            geo["ip_city"] = client_city
+        if client_country:
+            geo["ip_country"] = client_country
+        if client_region:
+            geo["ip_region"] = client_region
 
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
