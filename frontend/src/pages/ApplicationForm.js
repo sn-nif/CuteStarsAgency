@@ -13,7 +13,7 @@ import "react-phone-input-2/lib/style.css";
 
 const API = "https://cutestars-backend.onrender.com";
 
-const countries = [/*...full country list unchanged...*/];
+const countries = [/* full country list as in your code */];
 
 const ApplicationForm = () => {
   const { toast } = useToast();
@@ -81,8 +81,8 @@ const ApplicationForm = () => {
       return;
     }
 
-    if (parseInt(age) < 18 || parseInt(age) > 35) {
-      setErrorMessage("Applicants must be between 18–35 years old.");
+    if (parseInt(age) < 18) {
+      setErrorMessage("Applicants must be at least 18 years old.");
       setShowErrorModal(true);
       setIsSubmitting(false);
       return;
@@ -156,7 +156,7 @@ const ApplicationForm = () => {
                 required
                 className="w-full bg-gray-800/40 text-white placeholder-yellow-400 border border-gray-600 rounded-lg py-2 px-3"
               >
-                <option value="">Select Age (18–35) *</option>
+                <option value="">Select your age *</option>
                 {Array.from({ length: 52 }, (_, i) => 18 + i).map((age) => (
                   <option key={age} value={age}>{age}</option>
                 ))}
