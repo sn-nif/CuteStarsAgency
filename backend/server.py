@@ -247,7 +247,22 @@ def get_users():
 def delete_user(user_id):
     users_collection.delete_one({"_id": ObjectId(user_id)})
     return jsonify({"status": "User deleted"})
+@app.route("/create-admin")
+def create_admin_user():
+    import bcrypt
+    username = "admin"
+    password = "Stars2025!"
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    
+    if users_collection.find_one({"username": username}):
+        return "⚠️ Admin already exists"
 
+    users_collection.insert_one({
+        "username": username,
+        "password_hash": hashed,
+        "permissions": ["view", "edit", "delete"]
+    })
+    return "✅ Admin created"
 
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
