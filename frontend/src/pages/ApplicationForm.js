@@ -82,7 +82,6 @@ const ApplicationForm = () => {
         console.error("Failed to fetch IP/Geo info", error);
       }
     };
-
     fetchGeoInfo();
   }, []);
 
@@ -126,14 +125,12 @@ const ApplicationForm = () => {
     setIsSubmitting(true);
 
     const { name, age, email, contact, photos, country } = formData;
-
     if (!name || !age || !email || !contact || !country || photos.length === 0) {
       setErrorMessage("Please fill in all required fields and upload at least one photo.");
       setShowErrorModal(true);
       setIsSubmitting(false);
       return;
     }
-
     if (parseInt(age) < 18) {
       setErrorMessage("Applicants must be at least 18 years old.");
       setShowErrorModal(true);
@@ -175,12 +172,11 @@ const ApplicationForm = () => {
       setErrorMessage(error.response?.data?.message || "Server error.");
       setShowErrorModal(true);
     }
-
     setIsSubmitting(false);
   };
 
   return (
-    // ... your full form JSX here (unchanged) ...
+    // ... your full JSX stays unchanged and is expected to render the form
   );
 };
 
