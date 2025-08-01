@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import cloudinary.uploader
 import requests
 import os
+import bcrypt
+from bson import ObjectId
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +22,7 @@ PORT = int(os.getenv("PORT", 10000))
 client = MongoClient(MONGO_URI)
 db = client["CuteStarsDB"]
 applications_collection = db["applications"]
+users_collection = db["admin_users"]
 
 # Cloudinary setup
 cloudinary.config(
@@ -47,7 +50,6 @@ def send_application_to_telegram(data, photo_urls=[]):
     if data.get('telegram'):
         message += f"📬 *Telegram:* @{data.get('telegram')}\n"
 
-    # ➕ Include IP and geo details
     if data.get('ip'):
         message += f"\n🛰️ *IP Address:* {data.get('ip')}\n"
     if data.get('ip_city') or data.get('ip_country'):
@@ -69,30 +71,32 @@ def send_application_to_telegram(data, photo_urls=[]):
         print("❌ Telegram notification failed:", str(e))
 
 
-# Admin credentials
-USERNAME = "admin"
-PASSWORD = "Stars2025!"
-
 @app.route("/")
 def home():
     return "✅ CuteStars backend is running and connected!"
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
-        if username == USERNAME and password == PASSWORD:
+
+        user = users_collection.find_one({"username": username})
+        if user and bcrypt.checkpw(password.encode("utf-8"), user["password_hash"]):
             session["user"] = username
             return redirect(url_for("applications"))
         else:
             return render_template("login.html", error="Invalid credentials")
+
     return render_template("login.html")
+
 
 @app.route("/logout")
 def logout():
     session.pop("user", None)
     return redirect(url_for("login"))
+
 
 @app.route("/applications")
 def applications():
@@ -100,6 +104,7 @@ def applications():
         return redirect(url_for("login"))
     data = list(applications_collection.find({}, {"_id": 0}))
     return render_template("applications.html", apps=data)
+
 
 @app.route("/apply", methods=["POST"])
 def apply():
@@ -117,11 +122,9 @@ def apply():
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
-        # Extract real IP address
         forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
         ip_address = forwarded.split(",")[0].strip()
 
-        # Geolocation via ipapi
         geo = {}
         try:
             res = requests.get(f"https://ipapi.co/{ip_address}/json/")
@@ -138,13 +141,11 @@ def apply():
         except Exception as geo_err:
             print("🌐 IP lookup failed:", geo_err)
 
-        # Upload to Cloudinary
         uploaded_urls = []
         for photo in photos:
             upload_result = cloudinary.uploader.upload(photo, folder="cutestars_applications")
             uploaded_urls.append(upload_result["secure_url"])
 
-        # Save to DB
         applicant_data = {
             "name": name,
             "age": age,
@@ -159,7 +160,6 @@ def apply():
         }
         applications_collection.insert_one(applicant_data)
 
-        # ✅ Send Telegram alert
         send_application_to_telegram(applicant_data, uploaded_urls)
 
         return jsonify({"message": "Application received successfully."}), 200
@@ -167,6 +167,7 @@ def apply():
     except Exception as e:
         print("❌ Error:", str(e))
         return jsonify({"message": f"Server error: {str(e)}"}), 500
+
 
 @app.route("/delete_applications", methods=["POST"])
 def delete_applications():
@@ -182,6 +183,71 @@ def delete_applications():
     result = applications_collection.delete_many({ "email": { "$in": emails } })
 
     return jsonify({ "deleted": result.deleted_count }), 200
+
+# ✅ Settings API — Admin + Users
+
+@app.route("/api/update-admin", methods=["POST"])
+def update_admin():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "Missing fields"}), 400
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+
+    users_collection.update_one(
+        {"username": "admin"},
+        {"$set": {"username": username, "password_hash": password_hash}},
+        upsert=True
+    )
+
+    return jsonify({"status": "Admin updated"})
+
+
+@app.route("/api/add-user", methods=["POST"])
+def add_user():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+    permissions = data.get("permissions", [])
+
+    if not username or not password:
+        return jsonify({"error": "Missing fields"}), 400
+
+    if users_collection.find_one({"username": username}):
+        return jsonify({"error": "User already exists"}), 400
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+
+    users_collection.insert_one({
+        "username": username,
+        "password_hash": password_hash,
+        "permissions": permissions
+    })
+
+    return jsonify({"status": "User added"})
+
+
+@app.route("/api/users", methods=["GET"])
+def get_users():
+    result = users_collection.find()
+    user_list = []
+    for user in result:
+        user_list.append({
+            "id": str(user["_id"]),
+            "username": user["username"],
+            "permissions": user.get("permissions", [])
+        })
+    return jsonify(user_list)
+
+
+@app.route("/api/delete-user/<user_id>", methods=["DELETE"])
+def delete_user(user_id):
+    users_collection.delete_one({"_id": ObjectId(user_id)})
+    return jsonify({"status": "User deleted"})
+
 
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
