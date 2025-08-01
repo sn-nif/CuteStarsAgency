@@ -328,7 +328,7 @@ const ApplicationForm = () => {
         instagram: "",
         tiktok: "",
         telegram: "",
-        photos: []
+        photos: [],
         ip: "",
         geoCountry: "",
         geoCity: "",
