@@ -272,7 +272,7 @@
               <td>${app.age}</td>
               <td>${app.email}</td>
               <td>${app.contact}</td>
-              <td>{{app.country_flag}} {{app.country}}</td>
+              <td>${app.country_flag || ""} ${app.country}</td>
               <td>${app.ip || "—"}</td>
               <td>${app.ip_city || "—"}</td>
               <td>${app.ip_region || "—"}</td>
