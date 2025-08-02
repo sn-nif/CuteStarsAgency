@@ -55,7 +55,7 @@ def send_application_to_telegram(data, photo_files=[]):
     if data.get('telegram'):
         message += f"📬 *Telegram:* @{data.get('telegram')}\n"
     if data.get('ip'):
-        message += f"🛰️ *IP Address:* {data.get('ip')}\n"
+        message += f"\n🛰️ *IP Address:* {data.get('ip')}\n"
     if data.get('ip_city') or data.get('ip_country'):
         message += f"🌐 *Location:* {data.get('ip_city')}, {data.get('ip_region')} ({data.get('ip_country')})\n"
     if data.get('ip_org'):
