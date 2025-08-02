@@ -46,18 +46,18 @@ def country_to_flag(country_name):
     except:
         return ''
 
-def send_application_to_telegram(data, photo_files=[]):
+ddef send_application_to_telegram(data, photo_files=[]):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     # Step 1: Send applicant message
-    message = f"📥 *New Application Received*\n\n" \
-              f"👩🏻 *Name:* {data.get('name')}\n" \
-              f"🎂 *Age:* {data.get('age')}\n" \
-              f"📧 *Email:* {data.get('email')}\n" \
-              f"📱 *Phone:* {data.get('contact')}\n" \
-              flag = country_to_flag(data.get('country', ''))
-                message += f"🌍 *Nationality:* {flag} {data.get('country')}\n"
+    flag = country_to_flag(data.get('country', ''))
+    message = f"📥 *New Application Received*\n\n"
+    message += f"👩🏻 *Name:* {data.get('name')}\n"
+    message += f"🎂 *Age:* {data.get('age')}\n"
+    message += f"📧 *Email:* {data.get('email')}\n"
+    message += f"📱 *Phone:* {data.get('contact')}\n"
+    message += f"🌍 *Nationality:* {flag} {data.get('country')}\n"
 
     if data.get('instagram'):
         message += f"📸 *Instagram:* {data.get('instagram')}\n"
