@@ -268,6 +268,33 @@ def delete_applications():
     return jsonify({ "deleted": result.deleted_count }), 200
 
 # ✅ Settings API — Admin + Users
+@app.route("/api/add-user", methods=["POST"])
+def add_user():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+    telegram = data.get("telegram")
+    permissions = data.get("permissions", [])
+
+    print("➡️ Add User Request:", data)
+
+    if not username or not password:
+        return jsonify({"error": "Missing username or password"}), 400
+
+    if users_collection.find_one({"username": username}):
+        return jsonify({"error": "User already exists"}), 400
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+
+    users_collection.insert_one({
+        "username": username,
+        "password_hash": password_hash,
+        "telegram": telegram,
+        "permissions": permissions
+    })
+
+    return jsonify({"status": "User added"})
+
 
 @app.route("/api/update-admin", methods=["POST"])
 def update_admin():
