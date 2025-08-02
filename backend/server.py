@@ -331,28 +331,42 @@ def send_to_admin():
     apps = list(applications_collection.find({"email": {"$in": emails}}))
 
     for app in apps:
-        message = f\"\"\"\n📥 *Application Details*\n\n👩🏻 *Name:* {app.get('name')}\n🎂 *Age:* {app.get('age')}\n📧 *Email:* {app.get('email')}\n📱 *Phone:* +{app.get('contact')}\n🌍 *Nationality:* {app.get('country')}\n📸 *Instagram:* {app.get('instagram', '—')}\n🎵 *TikTok:* {app.get('tiktok', '—')}\n📬 *Telegram:* @{app.get('telegram', '')}\n🛰️ *City:* {app.get('ip_city', '—')}\n🌐 *Region:* {app.get('ip_region', '—')}\n🏳️ *Country:* {app.get('ip_country', '—')}\n\"\"\"\n
-        print(f\"\\n➡️ Sending message to {tg_id} for {app.get('email')}\")\n
-        try:\n
-            msg_res = requests.post(\n
-                f\"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage\",\n
-                json={\"chat_id\": tg_id, \"text\": message, \"parse_mode\": \"Markdown\"}\n
-            )\n
-            print(\"✅ Text sent\", msg_res.status_code, msg_res.text)\n
-        except Exception as e:\n
-            print(\"❌ Telegram message failed:\", e)\n
+        message = (
+            f"📥 *Application Details*\n\n"
+            f"👩🏻 *Name:* {app.get('name')}\n"
+            f"🎂 *Age:* {app.get('age')}\n"
+            f"📧 *Email:* {app.get('email')}\n"
+            f"📱 *Phone:* +{app.get('contact')}\n"
+            f"🌍 *Nationality:* {app.get('country')}\n"
+            f"📸 *Instagram:* {app.get('instagram', '—')}\n"
+            f"🎵 *TikTok:* {app.get('tiktok', '—')}\n"
+            f"📬 *Telegram:* @{app.get('telegram', '')}\n"
+            f"🛰️ *City:* {app.get('ip_city', '—')}\n"
+            f"🌐 *Region:* {app.get('ip_region', '—')}\n"
+            f"🏳️ *Country:* {app.get('ip_country', '—')}"
+        )
 
-        for url in app.get(\"photos\", []):\n
-            try:\n
-                photo_res = requests.post(\n
-                    f\"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendPhoto\",\n
-                    json={\"chat_id\": tg_id, \"photo\": url}\n
-                )\n
-                print(\"✅ Photo sent:\", photo_res.status_code, photo_res.text)\n
-            except Exception as e:\n
-                print(\"❌ Telegram photo failed:\", e)
+        print(f"\n➡️ Sending message to {tg_id} for {app.get('email')}")
+        try:
+            msg_res = requests.post(
+                f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage",
+                json={"chat_id": tg_id, "text": message, "parse_mode": "Markdown"}
+            )
+            print("✅ Text sent", msg_res.status_code, msg_res.text)
+        except Exception as e:
+            print("❌ Telegram message failed:", e)
 
-    return jsonify({\"status\": \"ok\"})
+        for url in app.get("photos", []):
+            try:
+                photo_res = requests.post(
+                    f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendPhoto",
+                    json={"chat_id": tg_id, "photo": url}
+                )
+                print("✅ Photo sent:", photo_res.status_code, photo_res.text)
+            except Exception as e:
+                print("❌ Telegram photo failed:", e)
+
+    return jsonify({"status": "ok"})
 
 @app.route("/api/users", methods=["GET"])
 def get_users():
