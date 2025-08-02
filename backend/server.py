@@ -294,45 +294,38 @@ def send_to_admin():
     emails = data.get("emails", [])
     tg_id = data.get("telegram_id")
 
+    print("📨 SEND TO ADMIN TRIGGERED")
+    print("Emails:", emails)
+    print("Telegram ID:", tg_id)
+
     if not emails or not tg_id:
         return jsonify({"status": "error", "message": "Missing data"}), 400
 
     apps = list(applications_collection.find({"email": {"$in": emails}}))
 
     for app in apps:
-        message = f"""
-📥 *Application Details*\n
-👩🏻 *Name:* {app.get('name')}
-🎂 *Age:* {app.get('age')}
-📧 *Email:* {app.get('email')}
-📱 *Phone:* +{app.get('contact')}
-🌍 *Nationality:* {app.get('country')}
-📸 *Instagram:* {app.get('instagram', '—')}
-🎵 *TikTok:* {app.get('tiktok', '—')}
-📬 *Telegram:* @{app.get('telegram', '')}
-🛰️ *City:* {app.get('ip_city', '—')}
-🌐 *Region:* {app.get('ip_region', '—')}
-🏳️ *Country:* {app.get('ip_country', '—')}
-        """
+        message = f\"\"\"\n📥 *Application Details*\n\n👩🏻 *Name:* {app.get('name')}\n🎂 *Age:* {app.get('age')}\n📧 *Email:* {app.get('email')}\n📱 *Phone:* +{app.get('contact')}\n🌍 *Nationality:* {app.get('country')}\n📸 *Instagram:* {app.get('instagram', '—')}\n🎵 *TikTok:* {app.get('tiktok', '—')}\n📬 *Telegram:* @{app.get('telegram', '')}\n🛰️ *City:* {app.get('ip_city', '—')}\n🌐 *Region:* {app.get('ip_region', '—')}\n🏳️ *Country:* {app.get('ip_country', '—')}\n\"\"\"\n
+        print(f\"\\n➡️ Sending message to {tg_id} for {app.get('email')}\")\n
+        try:\n
+            msg_res = requests.post(\n
+                f\"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage\",\n
+                json={\"chat_id\": tg_id, \"text\": message, \"parse_mode\": \"Markdown\"}\n
+            )\n
+            print(\"✅ Text sent\", msg_res.status_code, msg_res.text)\n
+        except Exception as e:\n
+            print(\"❌ Telegram message failed:\", e)\n
 
-        try:
-            requests.post(
-                f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage",
-                json={"chat_id": tg_id, "text": message, "parse_mode": "Markdown"}
-            )
-        except Exception as e:
-            print("Telegram message failed:", e)
+        for url in app.get(\"photos\", []):\n
+            try:\n
+                photo_res = requests.post(\n
+                    f\"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendPhoto\",\n
+                    json={\"chat_id\": tg_id, \"photo\": url}\n
+                )\n
+                print(\"✅ Photo sent:\", photo_res.status_code, photo_res.text)\n
+            except Exception as e:\n
+                print(\"❌ Telegram photo failed:\", e)
 
-        for url in app.get("photos", []):
-            try:
-                requests.post(
-                    f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendPhoto",
-                    json={"chat_id": tg_id, "photo": url}
-                )
-            except Exception as e:
-                print("Telegram photo failed:", e)
-
-    return jsonify({"status": "ok"})
+    return jsonify({\"status\": \"ok\"})
 
 @app.route("/api/users", methods=["GET"])
 def get_users():
