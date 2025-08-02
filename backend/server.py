@@ -46,7 +46,7 @@ def country_to_flag(country_name):
     except:
         return ''
 
-ddef send_application_to_telegram(data, photo_files=[]):
+def send_application_to_telegram(data, photo_files=[]):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
