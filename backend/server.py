@@ -8,6 +8,8 @@ import os
 import bcrypt
 from bson import ObjectId
 import pycountry
+import traceback
+
 
 # Load environment variables
 load_dotenv()
@@ -158,8 +160,15 @@ def applications():
         except:
             return ''
 
-    for app in raw_data:
-        app["country_flag"] = country_to_flag(app.get("country", ""))
+        for app in raw_data:
+        try:
+            app["country_flag"] = country_to_flag(app.get("country", ""))
+        except Exception as e:
+            print("⚠️ Error generating flag for country:", app.get("country", ""))
+            traceback.print_exc()
+            app["country_flag"] = ""
+
+
 
     return render_template("applications.html", apps=raw_data)
 
