@@ -289,30 +289,6 @@ def update_admin():
     return jsonify({"status": "Admin updated"})
 
 
-@app.route("/api/add-user", methods=["POST"])
-def add_user():
-    data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
-    permissions = data.get("permissions", [])
-
-    if not username or not password:
-        return jsonify({"error": "Missing fields"}), 400
-
-    if users_collection.find_one({"username": username}):
-        return jsonify({"error": "User already exists"}), 400
-
-    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
-
-    users_collection.insert_one({
-        "username": username,
-        "password_hash": password_hash,
-        "permissions": permissions
-    })
-
-    return jsonify({"status": "User added"})
-
-
 @app.route("/api/users", methods=["GET"])
 def get_users():
     result = users_collection.find()
@@ -321,9 +297,36 @@ def get_users():
         user_list.append({
             "id": str(user["_id"]),
             "username": user["username"],
+            "telegram": user.get("telegram", ""),
             "permissions": user.get("permissions", [])
         })
     return jsonify(user_list)
+
+@app.route("/api/edit-user/<user_id>", methods=["PUT"])
+def edit_user(user_id):
+    data = request.get_json()
+    update_fields = {}
+
+    if "username" in data:
+        update_fields["username"] = data["username"]
+
+    if "password" in data and data["password"]:
+        update_fields["password_hash"] = bcrypt.hashpw(
+            data["password"].encode("utf-8"), bcrypt.gensalt()
+        )
+
+    if "telegram" in data:
+        update_fields["telegram"] = data["telegram"]
+
+    if "permissions" in data:
+        update_fields["permissions"] = data["permissions"]
+
+    users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": update_fields}
+    )
+
+    return jsonify({"status": "User updated"})
 
 
 @app.route("/api/delete-user/<user_id>", methods=["DELETE"])
