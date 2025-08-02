@@ -32,10 +32,15 @@ cloudinary.config(
 )
 
 # Telegram notifier
-def send_application_to_telegram(data, photo_urls=[]):
+import mimetypes
+import uuid
+import json
+
+def send_application_to_telegram(data, photo_files=[]):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
+    # Step 1: Send applicant message
     message = f"📥 *New Application Received*\n\n" \
               f"👤 *Name:* {data.get('name')}\n" \
               f"🎂 *Age:* {data.get('age')}\n" \
@@ -49,7 +54,6 @@ def send_application_to_telegram(data, photo_urls=[]):
         message += f"🎵 *TikTok:* {data.get('tiktok')}\n"
     if data.get('telegram'):
         message += f"📬 *Telegram:* @{data.get('telegram')}\n"
-
     if data.get('ip'):
         message += f"\n🛰️ *IP Address:* {data.get('ip')}\n"
     if data.get('ip_city') or data.get('ip_country'):
@@ -57,19 +61,46 @@ def send_application_to_telegram(data, photo_urls=[]):
     if data.get('ip_org'):
         message += f"🏢 *ISP/Org:* {data.get('ip_org')}\n"
 
-    if photo_urls:
-        message += "\n🖼️ *Photos:*\n"
-        for i, url in enumerate(photo_urls):
-            message += f"🔗 [Photo {i+1}]({url})\n"
-
     try:
         requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
         )
     except Exception as e:
-        print("❌ Telegram notification failed:", str(e))
+        print("❌ Failed to send message:", str(e))
 
+    # Step 2: Send media group
+    if not photo_files:
+        return
+
+    media = []
+    files = {}
+
+    for i, photo in enumerate(photo_files):
+        field_id = f"file_{uuid.uuid4().hex}"
+        mime_type, _ = mimetypes.guess_type(photo)
+        try:
+            # Download image from Cloudinary URL into a stream
+            img_data = requests.get(photo).content
+            files[field_id] = (f"photo{i + 1}.jpg", img_data, mime_type or "image/jpeg")
+            media.append({
+                "type": "photo",
+                "media": f"attach://{field_id}"
+            })
+        except Exception as e:
+            print(f"❌ Failed to process image {photo}: {e}")
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMediaGroup",
+            data={
+                "chat_id": chat_id,
+                "media": json.dumps(media)
+            },
+            files=files
+        )
+    except Exception as e:
+        print("❌ Failed to send media group:", str(e))
 
 @app.route("/")
 def home():
