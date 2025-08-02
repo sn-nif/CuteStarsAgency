@@ -132,10 +132,15 @@
     <div id="applicationsSection">
       <h1>Applications</h1>
       <div class="controls">
-        <input type="text" id="searchBox" placeholder="Search by name, email, phone..." />
-        <button onclick="exportToCSV()">Export CSV</button>
-        <button onclick="deleteSelected()">Delete Selected</button>
-      </div>
+  <input type="text" id="searchBox" placeholder="Search by name, email, phone..." />
+  <select id="adminSelect" style="padding: 10px; border-radius: 4px; margin-right: 10px;">
+    <option value="">Select Admin</option>
+  </select>
+  <button onclick="sendToTelegram()">Send to Telegram</button>
+  <button onclick="exportToCSV()">Export CSV</button>
+  <button onclick="deleteSelected()">Delete Selected</button>
+</div>
+
       <table id="appsTable">
         <thead>
           <tr>
@@ -171,18 +176,20 @@
 
       <hr style="margin: 30px 0; border: 1px solid #333;" />
 
-      <!-- Add New User -->
-      <h2 style="color: gold;">➕ Add New User</h2>
-      <form id="addUserForm">
-        <input type="text" id="newUser" placeholder="Username" required />
-        <input type="password" id="newUserPassword" placeholder="Password" required />
-        <div>
-          <label><input type="checkbox" name="perm" value="view" /> View</label>
-          <label><input type="checkbox" name="perm" value="edit" /> Edit</label>
-          <label><input type="checkbox" name="perm" value="delete" /> Delete</label>
-        </div>
-        <button type="submit">Add User</button>
-      </form>
+     <!-- Add/Edit User -->
+<h2 style="color: gold;">👤 Add or Edit User</h2>
+<form id="addUserForm">
+  <input type="text" id="newUser" placeholder="Username" required />
+  <input type="password" id="newUserPassword" placeholder="Password (leave blank to keep)" />
+  <input type="text" id="newUserTelegram" placeholder="Telegram Username or ID" />
+  <div>
+    <label><input type="checkbox" name="perm" value="view" /> View</label>
+    <label><input type="checkbox" name="perm" value="edit" /> Edit</label>
+    <label><input type="checkbox" name="perm" value="delete" /> Delete</label>
+  </div>
+  <button type="submit">Save User</button>
+  <button type="button" onclick="clearUserForm()">Clear</button>
+</form>
 
       <hr style="margin: 30px 0; border: 1px solid #333;" />
 
@@ -282,6 +289,37 @@
           });
         });
     }
+    async function loadAdminDropdown() {
+  const res = await fetch("/api/users");
+  const users = await res.json();
+  const dropdown = document.getElementById("adminSelect");
+
+  dropdown.innerHTML = '<option value="">Select Admin</option>';
+  users.forEach(user => {
+    if (user.telegram) {
+      dropdown.innerHTML += `<option value="${user.telegram}">${user.username}</option>`;
+    }
+  });
+}
+async function sendToTelegram() {
+  const selectedTelegram = document.getElementById("adminSelect").value;
+  if (!selectedTelegram) return alert("Please select an admin.");
+
+  const selectedEmails = Array.from(document.querySelectorAll("#appsBody input[type='checkbox']:checked"))
+    .map(cb => cb.dataset.email);
+
+  if (!selectedEmails.length) return alert("Select at least one application.");
+
+  const res = await fetch("/send_to_admin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_id: selectedTelegram, emails: selectedEmails })
+  });
+
+  const result = await res.json();
+  alert(result.status === "ok" ? "Sent successfully" : "Error: " + result.message);
+}
+
 
     function viewImage(url) {
       const modal = document.getElementById("imageModal");
@@ -318,22 +356,106 @@
       });
     };
 
-    document.getElementById("addUserForm").onsubmit = e => {
-      e.preventDefault();
-      const username = document.getElementById("newUser").value;
-      const password = document.getElementById("newUserPassword").value;
-      const permissions = Array.from(document.querySelectorAll("input[name='perm']:checked")).map(cb => cb.value);
-      fetch("/api/add-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, permissions })
-      }).then(res => res.json()).then(data => {
+   <script>
+  let editingUserId = null;
+
+  // User form submission
+  document.getElementById("addUserForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("newUser").value;
+    const password = document.getElementById("newUserPassword").value;
+    const telegram = document.getElementById("newUserTelegram").value;
+    const permissions = Array.from(document.querySelectorAll("input[name='perm']:checked")).map(cb => cb.value);
+
+    const payload = { username, telegram, permissions };
+    if (password) payload.password = password;
+
+    const url = editingUserId
+      ? `/api/edit-user/${editingUserId}`
+      : "/api/add-user";
+    const method = editingUserId ? "PUT" : "POST";
+
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    alert(data.status || data.error);
+    clearUserForm();
+    loadUsers();
+  };
+
+  function clearUserForm() {
+    editingUserId = null;
+    document.getElementById("newUser").value = "";
+    document.getElementById("newUserPassword").value = "";
+    document.getElementById("newUserTelegram").value = "";
+    document.querySelectorAll("input[name='perm']").forEach(cb => cb.checked = false);
+  }
+
+  function loadUsers() {
+    fetch("/api/users")
+      .then(res => res.json())
+      .then(users => {
+        const container = document.getElementById("userList");
+        if (!users.length) {
+          container.innerHTML = "<p>No users found.</p>";
+          return;
+        }
+
+        container.innerHTML = `
+          <table style="width:100%; margin-top:20px;">
+            <tr>
+              <th style="color:gold;">Username</th>
+              <th style="color:gold;">Telegram</th>
+              <th style="color:gold;">Permissions</th>
+              <th style="color:gold;">Actions</th>
+            </tr>
+            ${users.map(user => `
+              <tr>
+                <td>${user.username}</td>
+                <td>${user.telegram || "—"}</td>
+                <td>${user.permissions.join(", ")}</td>
+                <td>
+                  <button onclick='editUser(${JSON.stringify(user)})'>Edit</button>
+                  <button onclick='deleteUser("${user.id}")'>Delete</button>
+                </td>
+              </tr>
+            `).join("")}
+          </table>
+        `;
+      });
+  }
+
+  function editUser(user) {
+    editingUserId = user.id;
+    document.getElementById("newUser").value = user.username;
+    document.getElementById("newUserPassword").value = "";
+    document.getElementById("newUserTelegram").value = user.telegram || "";
+    document.querySelectorAll("input[name='perm']").forEach(cb => {
+      cb.checked = user.permissions.includes(cb.value);
+    });
+  }
+
+  function deleteUser(id) {
+    if (!confirm("Are you sure you want to delete this user?")) return;
+    fetch(`/api/delete-user/${id}`, { method: "DELETE" })
+      .then(res => res.json())
+      .then(data => {
         alert(data.status || data.error);
         loadUsers();
       });
-    };
+  }
+
+  // Your other app functions...
+  // (toggleAll, exportToCSV, loadApplications, viewImage, etc.)
+</script>
+
 
     loadApplications();
+    loadAdminDropdown();
   </script>
 
   <!-- Injected data -->
