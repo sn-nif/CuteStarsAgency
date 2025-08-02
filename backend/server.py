@@ -171,9 +171,9 @@ def apply():
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
-        # Backup IP lookup (optional)
-        forwarded = request.headers.get("X-Forwarded-For", request.remote_addr)
-        ip_address = forwarded.split(",")[0].strip()
+        # Improved client IP detection behind proxy/CDN (e.g. Cloudflare)
+        ip_address = request.headers.get("CF-Connecting-IP") or \
+                     request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
 
         try:
             res = requests.get(f"https://ipapi.co/{ip_address}/json/")
