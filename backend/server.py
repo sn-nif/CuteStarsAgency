@@ -356,15 +356,18 @@ def send_to_admin():
         except Exception as e:
             print("❌ Telegram message failed:", e)
 
-        for url in app.get("photos", []):
+        photo_urls = app.get("photos", [])
+        if photo_urls:
+            media_group = [{"type": "photo", "media": url} for url in photo_urls[:10]]  # max 10 per group
             try:
-                photo_res = requests.post(
-                    f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendPhoto",
-                    json={"chat_id": tg_id, "photo": url}
+                response = requests.post(
+                    f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMediaGroup",
+                    json={"chat_id": tg_id, "media": media_group}
                 )
-                print("✅ Photo sent:", photo_res.status_code, photo_res.text)
+                print("✅ Grouped photo response:", response.status_code, response.text)
             except Exception as e:
-                print("❌ Telegram photo failed:", e)
+                print("❌ Telegram sendMediaGroup failed:", e)
+
 
     return jsonify({"status": "ok"})
 
