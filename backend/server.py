@@ -7,6 +7,7 @@ import requests
 import os
 import bcrypt
 from bson import ObjectId
+import pycountry
 
 # Load environment variables
 load_dotenv()
@@ -35,6 +36,15 @@ cloudinary.config(
 import mimetypes
 import uuid
 import json
+def country_to_flag(country_name):
+    try:
+        country = pycountry.countries.get(name=country_name)
+        if not country:
+            country = pycountry.countries.search_fuzzy(country_name)[0]
+        code = country.alpha_2
+        return ''.join(chr(127397 + ord(c)) for c in code.upper())
+    except:
+        return ''
 
 def send_application_to_telegram(data, photo_files=[]):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -46,7 +56,8 @@ def send_application_to_telegram(data, photo_files=[]):
               f"🎂 *Age:* {data.get('age')}\n" \
               f"📧 *Email:* {data.get('email')}\n" \
               f"📱 *Phone:* {data.get('contact')}\n" \
-              f"🌍 *Nationality:* {data.get('country')}\n"
+              flag = country_to_flag(data.get('country', ''))
+                message += f"🌍 *Nationality:* {flag} {data.get('country')}\n"
 
     if data.get('instagram'):
         message += f"📸 *Instagram:* {data.get('instagram')}\n"
@@ -133,8 +144,25 @@ def logout():
 def applications():
     if "user" not in session:
         return redirect(url_for("login"))
-    data = list(applications_collection.find({}, {"_id": 0}))
-    return render_template("applications.html", apps=data)
+
+    raw_data = list(applications_collection.find({}, {"_id": 0}))
+
+    def country_to_flag(country_name):
+        import pycountry
+        try:
+            country = pycountry.countries.get(name=country_name)
+            if not country:
+                country = pycountry.countries.search_fuzzy(country_name)[0]
+            code = country.alpha_2
+            return ''.join(chr(127397 + ord(c)) for c in code.upper())
+        except:
+            return ''
+
+    for app in raw_data:
+        app["country_flag"] = country_to_flag(app.get("country", ""))
+
+    return render_template("applications.html", apps=raw_data)
+
 
 
 @app.route("/apply", methods=["POST"])
