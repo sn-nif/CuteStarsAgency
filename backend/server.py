@@ -42,7 +42,7 @@ def send_application_to_telegram(data, photo_files=[]):
 
     # Step 1: Send applicant message
     message = f"📥 *New Application Received*\n\n" \
-              f"👤 *Name:* {data.get('name')}\n" \
+              f"👩🏻 *Name:* {data.get('name')}\n" \
               f"🎂 *Age:* {data.get('age')}\n" \
               f"📧 *Email:* {data.get('email')}\n" \
               f"📱 *Phone:* {data.get('contact')}\n" \
@@ -55,7 +55,7 @@ def send_application_to_telegram(data, photo_files=[]):
     if data.get('telegram'):
         message += f"📬 *Telegram:* @{data.get('telegram')}\n"
     if data.get('ip'):
-        message += f"\n🛰️ *IP Address:* {data.get('ip')}\n"
+        message += f"🛰️ *IP Address:* {data.get('ip')}\n"
     if data.get('ip_city') or data.get('ip_country'):
         message += f"🌐 *Location:* {data.get('ip_city')}, {data.get('ip_region')} ({data.get('ip_country')})\n"
     if data.get('ip_org'):
