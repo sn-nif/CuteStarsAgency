@@ -58,7 +58,7 @@ def send_application_to_telegram(data, photo_files=[]):
     message += f"👩🏻 *Name:* {data.get('name')}\n"
     message += f"🎂 *Age:* {data.get('age')}\n"
     message += f"📧 *Email:* {data.get('email')}\n"
-    message += f"📱 *Phone:* {data.get('contact')}\n"
+    message += f"📱 *Phone:* +{data.get('contact')}\n"
     message += f"🌍 *Nationality:* {flag} {data.get('country')}\n"
 
     if data.get('instagram'):
