@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: cutestars-backend
+    env: python
+    pythonVersion: 3.11.9
+    region: oregon
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt   # or requirements.txt if at root
+    startCommand: python backend/server.py
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: PORT
+        value: 10000
