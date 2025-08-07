@@ -139,24 +139,42 @@
       const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
       const a=document.createElement("a"); a.href=url; a.download="applications.csv"; a.click(); URL.revokeObjectURL(url);
     }
-    function loadApplications(){
-      // page already contains JSON; just read and render it
-      const data = JSON.parse(document.body.querySelector("script[type='application/json']").textContent);
-      const body=document.getElementById("appsBody"); body.innerHTML="";
-      data.forEach(app=>{
-        const row=document.createElement("tr");
-        row.innerHTML=`
-          <td><input type="checkbox" data-email="${app.email}" /></td>
-          <td>${app.name}</td><td>${app.age}</td><td>${app.email}</td><td>+${app.contact}</td>
-          <td>${app.country_flag || ""} ${app.country}</td>
-          <td>${app.ip_city || "—"}</td><td>${app.ip_region || "—"}</td><td>${app.ip_country || "—"}</td>
-          <td>${app.geo_latitude && app.geo_longitude
-              ? `<a href="https://maps.google.com/?q=${app.geo_latitude},${app.geo_longitude}" target="_blank">📍 View</a><br><small>${app.geo_accuracy || "?"}m</small>`
-              : "—"}</td>
-          <td>${(app.photos||[]).map(u=>`<img src="${u}" onclick="viewImage('${u}')"/>`).join("")}</td>`;
-        body.appendChild(row);
-      });
-    }
+    async function loadApplications() {
+      try {
+        const res = await fetch("/api/applications", { credentials: "include" });
+        if (!res.ok) {
+          throw new Error("Failed to load applications");
+        }
+        const data = await res.json();
+        const body = document.getElementById("appsBody");
+        body.innerHTML = "";
+    
+        data.forEach(app => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td><input type="checkbox" data-email="${app.email}" /></td>
+            <td>${app.name || "—"}</td>
+            <td>${app.age || "—"}</td>
+            <td>${app.email || "—"}</td>
+            <td>+${app.contact || "—"}</td>
+            <td>${app.country_flag || ""} ${app.country || "—"}</td>
+            <td>${app.ip_city || "—"}</td>
+            <td>${app.ip_region || "—"}</td>
+            <td>${app.ip_country || "—"}</td>
+            <td>
+              ${app.geo_latitude && app.geo_longitude
+                ? `<a href="https://maps.google.com/?q=${app.geo_latitude},${app.geo_longitude}" target="_blank">📍 View</a><br><small>${app.geo_accuracy || "?"}m</small>`
+                : "—"}
+            </td>
+            <td>${(app.photos || []).map(url => `<img src="${url}" onclick="viewImage('${url}')" />`).join("")}</td>
+          `;
+          body.appendChild(row);
+        });
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
     async function loadAdminDropdown(){
       const res=await fetch("/api/users"); const users=await res.json();
       const dd=document.getElementById("adminSelect"); dd.innerHTML='<option value="">Select Admin</option>';
