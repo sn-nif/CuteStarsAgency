@@ -1,6 +1,7 @@
 import openai
 import os
 
+# ✅ Set API key using new format
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 PROMPTS = {
@@ -13,9 +14,11 @@ PROMPTS = {
 
 def generate_caption(language):
     prompt = PROMPTS.get(language, PROMPTS["en"])
-    response = openai.ChatCompletion.create(
+
+    # ✅ New correct API call
+    response = openai.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=80
     )
-    return response["choices"][0]["message"]["content"].strip()
+    return response.choices[0].message.content.strip()
