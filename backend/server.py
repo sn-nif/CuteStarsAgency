@@ -9,9 +9,7 @@ import bcrypt
 from bson import ObjectId
 import pycountry
 import traceback
-import sys, telegram
-print("Python:", sys.version)
-print("PTB:", telegram.__version__)
+
 
 # Load environment variables
 load_dotenv()
@@ -452,86 +450,97 @@ def create_admin_user():
     })
     return "✅ Admin created"
 
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import (
-    Application, 
-    CommandHandler, 
-    MessageHandler, 
-    ConversationHandler, 
-    ContextTypes, 
-    filters
-)
-from telegram.ext import PicklePersistence
-import asyncio
+# ===== Telegram Webhook (no python-telegram-bot) =====
 
-# Constants
-LANGUAGE, EMAIL = range(2)
+from datetime import datetime
+
+# simple session collection for bot conversation
+sessions = db["bot_sessions"]  # docs: { chat_id, state, language, email, updated_at }
+
 LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
 
-# Persistent bot state (saved to file)
-app_persistence = PicklePersistence(filepath="conversation_state")
-telegram_app = Application.builder() \
-    .token(os.getenv("TELEGRAM_BOT_TOKEN")) \
-    .persistence(app_persistence) \
-    .build()
+def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
+    payload = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage",
+            json=payload, timeout=15
+        )
+        return r.status_code, r.text
+    except Exception as e:
+        print("Telegram sendMessage error:", e)
+        return 500, str(e)
 
-# Step 1: /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    context.user_data["telegram_id"] = telegram_id
+def set_state(chat_id, **fields):
+    fields["updated_at"] = datetime.utcnow()
+    sessions.update_one({"chat_id": chat_id}, {"$set": fields}, upsert=True)
 
-    reply_markup = ReplyKeyboardMarkup([[lang] for lang in LANGUAGES], resize_keyboard=True, one_time_keyboard=True)
-    await update.message.reply_text("👋 Welcome! Please choose your preferred language:", reply_markup=reply_markup)
-    return LANGUAGE
+def get_state(chat_id):
+    return sessions.find_one({"chat_id": chat_id}) or {}
 
-# Step 2: Receive language
-async def receive_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["language"] = update.message.text
-    await update.message.reply_text("📧 Please enter your email (same one used in the application):")
-    return EMAIL
-
-# Step 3: Match email
-async def receive_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    email = update.message.text.strip()
-    telegram_id = context.user_data.get("telegram_id")
-    language = context.user_data.get("language")
-
-    applicant = applications_collection.find_one({"email": email})
-    if not applicant:
-        await update.message.reply_text("❌ No application found with this email.")
-        return ConversationHandler.END
-
-    applications_collection.update_one(
-        {"_id": applicant["_id"]},
-        {"$set": {"telegram_id": telegram_id, "language": language}}
-    )
-    await update.message.reply_text("✅ Verified! Please wait while we guide you further.")
-    return ConversationHandler.END
-
-# Fallback
-async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⚠️ Please follow the instructions.")
-
-# Handler setup
-conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("start", start)],
-    states={
-        LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_language)],
-        EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_email)],
-    },
-    fallbacks=[MessageHandler(filters.ALL, fallback)],
-    name="onboarding",
-    persistent=True
-)
-
-telegram_app.add_handler(conv_handler)
-
-# Step 4: Flask webhook route
 @app.route("/webhook", methods=["POST"])
 def telegram_webhook():
-    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-    asyncio.run(telegram_app.process_update(update))
+    update = request.get_json(force=True, silent=True) or {}
+    msg = update.get("message") or update.get("edited_message") or {}
+    if not msg:
+        return "ok", 200
+
+    chat = msg.get("chat") or {}
+    chat_id = chat.get("id")
+    if not chat_id:
+        return "ok", 200
+
+    text = (msg.get("text") or "").strip()
+
+    # /start → ask for language
+    if text.lower().startswith("/start"):
+        set_state(chat_id, chat_id=chat_id, state="awaiting_language")
+        keyboard = {
+            "keyboard": [[{"text": lang}] for lang in LANGUAGES],
+            "resize_keyboard": True,
+            "one_time_keyboard": True
+        }
+        tg_send_message(chat_id, "👋 Welcome! Please choose your preferred language:", reply_markup=keyboard)
+        return "ok", 200
+
+    st = get_state(chat_id)
+    state = st.get("state")
+
+    # language → ask for email
+    if state == "awaiting_language":
+        language = text
+        if language not in LANGUAGES:
+            tg_send_message(chat_id, "Please pick a language from the buttons.")
+            return "ok", 200
+        set_state(chat_id, state="awaiting_email", language=language)
+        tg_send_message(chat_id, "📧 Please enter your email (same one used in the application):")
+        return "ok", 200
+
+    # email → verify + save
+    if state == "awaiting_email":
+        email = text.lower()
+        applicant = applications_collection.find_one({"email": email})
+        if not applicant:
+            tg_send_message(chat_id, "❌ No application found with this email. Please re-enter.")
+            return "ok", 200
+
+        applications_collection.update_one(
+            {"_id": applicant["_id"]},
+            {"$set": {"telegram_id": chat_id, "language": st.get("language")}}
+        )
+        set_state(chat_id, state=None, email=email)
+        tg_send_message(chat_id, "✅ Verified! We’ll guide you through the next steps shortly.")
+        return "ok", 200
+
+    # fallback
+    tg_send_message(chat_id, "Please type /start to begin.")
     return "ok", 200
+# ===== end Telegram Webhook =====
+
 
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
