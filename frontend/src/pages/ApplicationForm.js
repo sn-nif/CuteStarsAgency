@@ -11,7 +11,7 @@ import axios from "axios";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
 import { useNavigate } from "react-router-dom";
-import ThankYou from "./pages/ThankYou";
+
 
 
 
@@ -235,7 +235,7 @@ const ApplicationForm = () => {
   });
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   useEffect(() => {
@@ -476,16 +476,7 @@ const ApplicationForm = () => {
         </Card>
       </div>
 
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60">
-          <div className="bg-white rounded-lg p-6 shadow-xl max-w-sm w-full text-center">
-            <h2 className="text-xl font-semibold mb-2 text-yellow-600">Application Submitted</h2>
-            <p className="text-gray-700 mb-4">You will hear from us soon.</p>
-            <button onClick={() => setShowSuccessModal(false)} className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded">Close</button>
-          </div>
-        </div>
-      )}
+      
 
       {/* Error Modal */}
       {showErrorModal && (
