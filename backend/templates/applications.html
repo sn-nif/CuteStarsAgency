@@ -83,7 +83,40 @@
       <hr style="margin: 30px 0; border: 1px solid #333;" />
       <h2 style="color: gold;">👥 Users</h2>
       <div id="userList"><p>Loading...</p></div>
-
+      <hr style="margin: 30px 0; border: 1px solid #333;" />
+      <h2 style="color: gold;">🤖 Bot/Webhook Settings</h2>
+      
+      <div style="display:flex;align-items:center;gap:12px;margin:10px 0 6px;">
+        <label for="webhookToggle" style="min-width:180px;">Enable Telegram Webhook</label>
+        <label class="switch">
+          <input id="webhookToggle" type="checkbox" />
+          <span class="slider round"></span>
+        </label>
+      </div>
+      <small style="color:#bbb;display:block;margin-bottom:14px;">
+        When OFF: the webhook ignores Telegram updates, and the Thank You page button uses the alternate bot.
+      </small>
+      
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:560px;">
+        <input id="botMainUrl" type="url" placeholder="Primary bot URL (e.g. https://t.me/AiSiva_bot)" />
+        <input id="botAltUrl"  type="url" placeholder="Alternate bot URL (used when webhook is OFF)" />
+        <div>
+          <button id="saveSettingsBtn" style="padding:10px 15px;background:gold;border:none;color:black;font-weight:bold;cursor:pointer;">
+            Save Bot Settings
+          </button>
+          <span id="settingsMsg" style="margin-left:10px;color:#bbb;"></span>
+        </div>
+      </div>
+      
+      <!-- tiny CSS for the toggle -->
+      <style>
+        .switch{position:relative;display:inline-block;width:48px;height:24px}
+        .switch input{opacity:0;width:0;height:0}
+        .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#555;transition:.2s;border-radius:24px}
+        .slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background:white;transition:.2s;border-radius:50%}
+        input:checked + .slider{background:gold}
+        input:checked + .slider:before{transform:translateX(24px)}
+      </style>
       <!-- 📚 Bot Knowledge (Upload PDF) -->
       <hr style="margin: 30px 0; border: 1px solid #333;" />
       <h2 style="color: gold;">📚 Bot Knowledge (Upload PDF)</h2>
@@ -256,7 +289,64 @@
         }catch(err){ msg.style.color="#ff6b6b"; msg.textContent="❌ "+err.message; }
       });
     }
+    <script>
+  async function loadSettings() {
+    try {
+      const res = await fetch("/api/settings", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load settings");
+      const s = await res.json();
+      document.getElementById("webhookToggle").checked = !!s.webhook_enabled;
+      document.getElementById("botMainUrl").value = s.bot_main_url || "";
+      document.getElementById("botAltUrl").value  = s.bot_alt_url  || "";
+    } catch (e) {
+      console.error(e);
+      document.getElementById("settingsMsg").textContent = "Failed to load settings";
+      document.getElementById("settingsMsg").style.color = "#ff6b6b";
+    }
+  }
 
+  async function saveSettings() {
+    const msg = document.getElementById("settingsMsg");
+    msg.style.color = "#bbb";
+    msg.textContent = "Saving…";
+    const payload = {
+      webhook_enabled: document.getElementById("webhookToggle").checked,
+      bot_main_url: document.getElementById("botMainUrl").value.trim(),
+      bot_alt_url:  document.getElementById("botAltUrl").value.trim(),
+    };
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Save failed");
+      msg.style.color = "#9BE37A";
+      msg.textContent = "Saved!";
+    } catch (e) {
+      msg.style.color = "#ff6b6b";
+      msg.textContent = "❌ " + e.message;
+    }
+  }
+
+  // hook up the save button
+  document.getElementById("saveSettingsBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    saveSettings();
+  });
+
+  // make sure settings load when you open the tab
+  settingsTab.onclick = () => {
+    applicationsSection.style.display = "none";
+    settingsSection.style.display = "block";
+    settingsTab.classList.add("active");
+    applicationsTab.classList.remove("active");
+    loadUsers();
+    loadSettings(); // <— add this
+  };
+</script>
     // initial draws
     loadApplications();
     loadAdminDropdown();
