@@ -9,7 +9,9 @@ import bcrypt
 from bson import ObjectId
 import pycountry
 import traceback
-
+import sys, telegram
+print("Python:", sys.version)
+print("PTB:", telegram.__version__)
 
 # Load environment variables
 load_dotenv()
