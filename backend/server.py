@@ -450,6 +450,86 @@ def create_admin_user():
     })
     return "✅ Admin created"
 
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import (
+    Application, 
+    CommandHandler, 
+    MessageHandler, 
+    ConversationHandler, 
+    ContextTypes, 
+    filters
+)
+from telegram.ext import PicklePersistence
+import asyncio
+
+# Constants
+LANGUAGE, EMAIL = range(2)
+LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
+
+# Persistent bot state (saved to file)
+app_persistence = PicklePersistence(filepath="conversation_state")
+telegram_app = Application.builder() \
+    .token(os.getenv("TELEGRAM_BOT_TOKEN")) \
+    .persistence(app_persistence) \
+    .build()
+
+# Step 1: /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    context.user_data["telegram_id"] = telegram_id
+
+    reply_markup = ReplyKeyboardMarkup([[lang] for lang in LANGUAGES], resize_keyboard=True, one_time_keyboard=True)
+    await update.message.reply_text("👋 Welcome! Please choose your preferred language:", reply_markup=reply_markup)
+    return LANGUAGE
+
+# Step 2: Receive language
+async def receive_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["language"] = update.message.text
+    await update.message.reply_text("📧 Please enter your email (same one used in the application):")
+    return EMAIL
+
+# Step 3: Match email
+async def receive_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    email = update.message.text.strip()
+    telegram_id = context.user_data.get("telegram_id")
+    language = context.user_data.get("language")
+
+    applicant = applications_collection.find_one({"email": email})
+    if not applicant:
+        await update.message.reply_text("❌ No application found with this email.")
+        return ConversationHandler.END
+
+    applications_collection.update_one(
+        {"_id": applicant["_id"]},
+        {"$set": {"telegram_id": telegram_id, "language": language}}
+    )
+    await update.message.reply_text("✅ Verified! Please wait while we guide you further.")
+    return ConversationHandler.END
+
+# Fallback
+async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("⚠️ Please follow the instructions.")
+
+# Handler setup
+conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("start", start)],
+    states={
+        LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_language)],
+        EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_email)],
+    },
+    fallbacks=[MessageHandler(filters.ALL, fallback)],
+    name="onboarding",
+    persistent=True
+)
+
+telegram_app.add_handler(conv_handler)
+
+# Step 4: Flask webhook route
+@app.route("/webhook", methods=["POST"])
+def telegram_webhook():
+    update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+    asyncio.run(telegram_app.process_update(update))
+    return "ok", 200
 
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
