@@ -498,7 +498,7 @@ def telegram_webhook():
 
     # /start → ask for language
     if text.lower().startswith("/start"):
-        set_state(chat_id, chat_id=chat_id, state="awaiting_language")
+        set_state(chat_id, state="awaiting_language")
         keyboard = {
             "keyboard": [[{"text": lang}] for lang in LANGUAGES],
             "resize_keyboard": True,
