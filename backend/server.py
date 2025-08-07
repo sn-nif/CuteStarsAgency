@@ -441,7 +441,11 @@ def get_next_video():
         video_post = generate_video_post(lang)
         return jsonify(video_post), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import traceback
+        return jsonify({
+            "error": str(e),
+            "trace": traceback.format_exc()
+        }), 500
 
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
