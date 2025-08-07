@@ -71,9 +71,9 @@ const HomePage = () => {
       href="https://cutestars-backend.onrender.com/login"
       target="_blank"
       rel="noopener noreferrer"
-      className="fixed top-4 right-4 z-50 bg-yellow-400 text-black font-semibold py-2 px-4 rounded-md shadow-lg hover:bg-yellow-500 transition-all duration-300"
+      className="fixed top-4 left-4 z-50 bg-yellow-400 text-black font-bold w-10 h-10 flex items-center justify-center rounded-md shadow hover:bg-yellow-500 transition-all duration-300"
     >
-      Admin Login
+      😈
     </a>
       {/* Header */}
       <header className="px-4 py-6 text-center">
