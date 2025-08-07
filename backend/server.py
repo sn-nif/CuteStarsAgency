@@ -16,10 +16,14 @@ import traceback
 LANGUAGE, EMAIL = range(2)  # Conversation states
 LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
 
-# App links + guide
+# App links + signup guide
 APP_URL_ANDROID = "https://iulia.s3.amazonaws.com/apps/livegirl_host.apk"
 APP_URL_IOS     = "https://apps.apple.com/sa/app/halo-meditation-sleep/id1668970568"
 SIGNUP_VIDEO    = "https://youtube.com/shorts/COPJyTKqthI?si=B-ZSom5UOoUJWZsV"
+
+# Admin (your personal Telegram numeric chat ID)
+# Set TELEGRAM_CHAT_ID in Render env vars; falls back to 0 if not set
+ADMIN_CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 
 # Load environment variables
 load_dotenv()
