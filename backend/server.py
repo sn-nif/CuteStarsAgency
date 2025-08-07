@@ -10,6 +10,11 @@ from bson import ObjectId
 import pycountry
 import traceback
 
+# =========================
+# Telegram Bot Constants
+# =========================
+LANGUAGE, EMAIL = range(2)  # Conversation states
+LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
 
 # App links + guide
 APP_URL_ANDROID = "https://iulia.s3.amazonaws.com/apps/livegirl_host.apk"
