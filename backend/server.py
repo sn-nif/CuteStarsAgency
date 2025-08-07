@@ -439,6 +439,20 @@ from flask import jsonify
 from flask import jsonify, request
 from pymongo import MongoClient
 import random
+@app.route('/generate-video', methods=["POST"])
+def generate_and_save_video():
+    try:
+        lang = request.args.get("lang", "en")
+        post = generate_video_post(lang)
+
+        # Save to DB
+        db = client["CuteStarsDB"]
+        videos = db["Videos"]
+        videos.insert_one({**post, "gender": "female", "used": False})
+
+        return jsonify({"status": "saved", "video": post}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/get-next-video')
 def get_next_video():
