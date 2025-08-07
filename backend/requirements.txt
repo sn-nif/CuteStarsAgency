@@ -8,3 +8,4 @@ bcrypt
 pycountry
 openai
 ffmpeg
+gTTS
