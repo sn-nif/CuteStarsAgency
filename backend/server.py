@@ -74,8 +74,8 @@ def send_application_to_telegram(data, photo_files=[]):
     if data.get('ip_org'):
         message += f"🏢 *ISP/Org:* {data.get('ip_org')}\n"
     # If browser-based location exists, add Google Maps link
-        lat = data.get("geo_latitude")
-        lon = data.get("geo_longitude")
+    lat = data.get("geo_latitude")
+    lon = data.get("geo_longitude")
     if lat and lon:
     try:
         float(lat)
@@ -254,7 +254,7 @@ def apply():
             "tiktok": tiktok,
             "telegram": telegram,
             "photos": uploaded_urls,
-            **geo
+            **geo,
             "geo_latitude": latitude,
             "geo_longitude": longitude,
             "geo_accuracy": geo_accuracy,
