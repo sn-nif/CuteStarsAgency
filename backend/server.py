@@ -11,6 +11,11 @@ import pycountry
 import traceback
 
 
+# App links + guide
+APP_URL_ANDROID = "https://iulia.s3.amazonaws.com/apps/livegirl_host.apk"
+APP_URL_IOS     = "https://apps.apple.com/sa/app/halo-meditation-sleep/id1668970568"
+SIGNUP_VIDEO    = "https://youtube.com/shorts/COPJyTKqthI?si=B-ZSom5UOoUJWZsV"
+
 # Load environment variables
 load_dotenv()
 
