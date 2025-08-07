@@ -436,23 +436,51 @@ from automation.video_generator import generate_video_post
 
 from flask import jsonify
 
+from flask import jsonify, request
+from pymongo import MongoClient
+import random
+
 @app.route('/get-next-video')
 def get_next_video():
+    lang = request.args.get('lang', 'en')
+
     try:
-        # Simulate your logic here
-        video = get_smart_video_logic()
+        client = MongoClient(os.getenv("MONGODB_URI"))
+        db = client["CuteStarsDB"]
+        videos = db["Videos"]
 
-        if not video:
-            return jsonify({"error": "No suitable video found."}), 404
+        # Fetch 1 random unseen female video in the requested language
+        query = {
+            "language": lang,
+            "gender": "female",  # Only female
+            "used": False
+        }
 
-        return jsonify(video), 200
+        pipeline = [
+            { "$match": query },
+            { "$sample": { "size": 1 } }
+        ]
+
+        result = list(videos.aggregate(pipeline))
+        if not result:
+            return jsonify({ "error": "No videos available." }), 404
+
+        video = result[0]
+
+        # Mark as used
+        videos.update_one({"_id": video["_id"]}, { "$set": { "used": True } })
+
+        return jsonify({
+            "caption": video["caption"],
+            "video_url": video["video_url"],
+            "cloudinary_id": video["cloudinary_id"],
+            "language": video["language"],
+            "post_id": str(video["_id"]),
+            "fileSize": video.get("fileSize", 500)
+        })
 
     except Exception as e:
-        import traceback
-        return jsonify({
-            "error": str(e),
-            "trace": traceback.format_exc()
-        }), 500
+        return jsonify({ "error": str(e) }), 500
 
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
