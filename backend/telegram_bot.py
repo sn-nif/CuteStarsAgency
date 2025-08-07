@@ -18,10 +18,7 @@ client = MongoClient(os.getenv("MONGODB_URI"))
 db = client["CuteStarsDB"]
 applications = db["applications"]
 
-# Conversation states
 LANGUAGE, EMAIL = range(2)
-
-# Supported languages
 LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,7 +61,6 @@ async def receive_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }}
     )
     await update.message.reply_text("✅ Verified! Please wait while we guide you to the next steps.")
-    # Step 3 logic continues from here
     return ConversationHandler.END
 
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
