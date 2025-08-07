@@ -464,13 +464,10 @@ def create_admin_user():
     return "✅ Admin created"
 
 # ===== Telegram Webhook (no python-telegram-bot) =====
-
 from datetime import datetime
 
 # simple session collection for bot conversation
 sessions = db["bot_sessions"]  # docs: { chat_id, state, language, email, updated_at }
-
-l
 
 def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
     payload = {"chat_id": chat_id, "text": text}
@@ -489,7 +486,6 @@ def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
         return 500, str(e)
 
 def set_state(chat_id, **fields):
-    from datetime import datetime
     fields["updated_at"] = datetime.utcnow()
     sessions.update_one(
         {"chat_id": chat_id},
@@ -539,132 +535,133 @@ def telegram_webhook():
         return "ok", 200
 
     # email → verify + save → terms
-if state == "awaiting_email":
-    email = text.strip().lower()
-    applicant = applications_collection.find_one({"email": email})
-    if not applicant:
-        tg_send_message(chat_id, "❌ No application found with this email. Please re-enter.")
-        return "ok", 200
-
-    # Save telegram_id + language
-    applications_collection.update_one(
-        {"_id": applicant["_id"]},
-        {"$set": {"telegram_id": chat_id, "language": st.get("language")}}
-    )
-
-    # Ask Terms
-    set_state(chat_id, state="awaiting_terms", email=email)
-    tg_send_message(
-        chat_id,
-        "📄 Please confirm you accept the terms of service and our privacy policy.\nReply with *I accept* to continue.",
-        parse_mode="Markdown"
-    )
-    return "ok", 200
-
-# TERMS → Q&A prompt
-if state == "awaiting_terms":
-    if text.strip().lower() not in ["i accept", "accept", "yes"]:
-        tg_send_message(chat_id, "Please type *I accept* to continue.", parse_mode="Markdown")
-        return "ok", 200
-    set_state(chat_id, state="qna_or_skip")
-    tg_send_message(
-        chat_id,
-        "❓ Do you have any questions? Send them now, or type *skip*.",
-        parse_mode="Markdown"
-    )
-    return "ok", 200
-
-# Optional Q&A → Platform
-if state == "qna_or_skip":
-    if text.strip().lower() != "skip":
-        # (Optional) Integrate GPT here; for now, acknowledge
-        tg_send_message(chat_id, "Thanks! Our team will reply if needed. Type *skip* to continue.")
-        return "ok", 200
-    keyboard = {
-        "keyboard": [[{"text":"Android"}],[{"text":"iOS"}]],
-        "resize_keyboard": True, "one_time_keyboard": True
-    }
-    set_state(chat_id, state="awaiting_platform")
-    tg_send_message(chat_id, "📱 Which phone do you use? (Android or iOS)", reply_markup=keyboard)
-    return "ok", 200
-
-# Platform → send links + video → ask App ID
-if state == "awaiting_platform":
-    choice = text.strip().lower()
-    if choice not in ["android","ios"]:
-        tg_send_message(chat_id, "Please choose *Android* or *iOS* from the buttons.", parse_mode="Markdown")
-        return "ok", 200
-    link = APP_URL_ANDROID if choice == "android" else APP_URL_IOS
-    tg_send_message(chat_id, f"⬇️ Download the app:\n{link}")
-    tg_send_message(chat_id, f"🎬 Sign-up guide:\n{SIGNUP_VIDEO}")
-    set_state(chat_id, state="awaiting_app_id")
-    tg_send_message(chat_id, "Please send your *Application ID* now.", parse_mode="Markdown")
-    return "ok", 200
-
-# Save App ID → waiting msg → notify admin
-if state == "awaiting_app_id":
-    app_id = text.strip()
-    email = st.get("email")
-
-    if email:
-        applications_collection.update_one(
-            {"email": email},
-            {"$set": {"application_id": app_id}}
-        )
-
-    set_state(chat_id, state="waiting_approval")
-    tg_send_message(chat_id, "✅ Received. Please wait 1–2 working days for approval.")
-
-    # Notify admin with summary + photos
-    try:
-        if ADMIN_CHAT_ID:
-            app_doc = applications_collection.find_one({"email": email}) if email else None
-            if app_doc:
-                summary = (
-                    f"📝 Applicant\n"
-                    f"• Name: {app_doc.get('name')}\n"
-                    f"• Email: {app_doc.get('email')}\n"
-                    f"• App ID: {app_doc.get('application_id')}\n"
-                    f"• Country: {app_doc.get('country')}\n"
-                    f"• Phone: +{app_doc.get('contact')}\n"
-                    f"• Telegram ID: {chat_id}\n"
-                    f"Reply with:  *activated {app_doc.get('email')}*  to approve."
-                )
-                tg_send_message(ADMIN_CHAT_ID, summary, parse_mode="Markdown")
-
-                photos = (app_doc.get("photos") or [])[:10]
-                if photos:
-                    media_group = [{"type":"photo","media":u} for u in photos]
-                    requests.post(
-                        f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMediaGroup",
-                        json={"chat_id": ADMIN_CHAT_ID, "media": media_group},
-                        timeout=20
-                    )
-    except Exception as e:
-        print("Admin notify error:", e)
-
-    return "ok", 200
-
-    # Admin fast-approval (message like: "activated user@example.com")
-if ADMIN_CHAT_ID and chat_id == ADMIN_CHAT_ID:
-    parts = text.strip().split()
-    if len(parts) == 2 and parts[0].lower() in ["activated","approve","approved"]:
-        target_email = parts[1].lower()
-        applicant = applications_collection.find_one({"email": target_email})
+    if state == "awaiting_email":
+        email = text.strip().lower()
+        applicant = applications_collection.find_one({"email": email})
         if not applicant:
-            tg_send_message(ADMIN_CHAT_ID, f"❌ No applicant with email {target_email}")
+            tg_send_message(chat_id, "❌ No application found with this email. Please re-enter.")
             return "ok", 200
 
+        # Save telegram_id + language
         applications_collection.update_one(
             {"_id": applicant["_id"]},
-            {"$set": {"status": "activated"}}
+            {"$set": {"telegram_id": chat_id, "language": st.get("language")}}
         )
 
-        tgt_chat_id = applicant.get("telegram_id")
-        if tgt_chat_id:
-            tg_send_message(int(tgt_chat_id), "🎉 Your account has been activated. You can log in now.")
-        tg_send_message(ADMIN_CHAT_ID, f"✅ Activated {target_email}")
+        # Ask Terms
+        set_state(chat_id, state="awaiting_terms", email=email)
+        tg_send_message(
+            chat_id,
+            "📄 Please confirm you accept the terms of service and our privacy policy.\nReply with *I accept* to continue.",
+            parse_mode="Markdown"
+        )
         return "ok", 200
+
+    # TERMS → Q&A prompt
+    if state == "awaiting_terms":
+        if text.strip().lower() not in ["i accept", "accept", "yes"]:
+            tg_send_message(chat_id, "Please type *I accept* to continue.", parse_mode="Markdown")
+            return "ok", 200
+        set_state(chat_id, state="qna_or_skip")
+        tg_send_message(
+            chat_id,
+            "❓ Do you have any questions? Send them now, or type *skip*.",
+            parse_mode="Markdown"
+        )
+        return "ok", 200
+
+    # Optional Q&A → Platform
+    if state == "qna_or_skip":
+        if text.strip().lower() != "skip":
+            # (Optional) Integrate GPT here; for now, acknowledge
+            tg_send_message(chat_id, "Thanks! Our team will reply if needed. Type *skip* to continue.")
+            return "ok", 200
+        keyboard = {
+            "keyboard": [[{"text": "Android"}], [{"text": "iOS"}]],
+            "resize_keyboard": True, "one_time_keyboard": True
+        }
+        set_state(chat_id, state="awaiting_platform")
+        tg_send_message(chat_id, "📱 Which phone do you use? (Android or iOS)", reply_markup=keyboard)
+        return "ok", 200
+
+    # Platform → send links + video → ask App ID
+    if state == "awaiting_platform":
+        choice = text.strip().lower()
+        if choice not in ["android", "ios"]:
+            tg_send_message(chat_id, "Please choose *Android* or *iOS* from the buttons.", parse_mode="Markdown")
+            return "ok", 200
+        link = APP_URL_ANDROID if choice == "android" else APP_URL_IOS
+        tg_send_message(chat_id, f"⬇️ Download the app:\n{link}")
+        tg_send_message(chat_id, f"🎬 Sign-up guide:\n{SIGNUP_VIDEO}")
+        set_state(chat_id, state="awaiting_app_id")
+        tg_send_message(chat_id, "Please send your *Application ID* now.", parse_mode="Markdown")
+        return "ok", 200
+
+    # Save App ID → waiting msg → notify admin
+    if state == "awaiting_app_id":
+        app_id = text.strip()
+        email = st.get("email")
+
+        if email:
+            applications_collection.update_one(
+                {"email": email},
+                {"$set": {"application_id": app_id}}
+            )
+
+        set_state(chat_id, state="waiting_approval")
+        tg_send_message(chat_id, "✅ Received. Please wait 1–2 working days for approval.")
+
+        # Notify admin with summary + photos
+        try:
+            if ADMIN_CHAT_ID:
+                app_doc = applications_collection.find_one({"email": email}) if email else None
+                if app_doc:
+                    summary = (
+                        f"📝 Applicant\n"
+                        f"• Name: {app_doc.get('name')}\n"
+                        f"• Email: {app_doc.get('email')}\n"
+                        f"• App ID: {app_doc.get('application_id')}\n"
+                        f"• Country: {app_doc.get('country')}\n"
+                        f"• Phone: +{app_doc.get('contact')}\n"
+                        f"• Telegram ID: {chat_id}\n"
+                        f"Reply with:  *activated {app_doc.get('email')}*  to approve."
+                    )
+                    tg_send_message(ADMIN_CHAT_ID, summary, parse_mode="Markdown")
+
+                    photos = (app_doc.get("photos") or [])[:10]
+                    if photos:
+                        media_group = [{"type": "photo", "media": u} for u in photos]
+                        requests.post(
+                            f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMediaGroup",
+                            json={"chat_id": ADMIN_CHAT_ID, "media": media_group},
+                            timeout=20
+                        )
+        except Exception as e:
+            print("Admin notify error:", e)
+
+        return "ok", 200
+
+    # Admin fast-approval (message like: "activated user@example.com")
+    if ADMIN_CHAT_ID and chat_id == ADMIN_CHAT_ID:
+        parts = text.strip().split()
+        if len(parts) == 2 and parts[0].lower() in ["activated", "approve", "approved"]:
+            target_email = parts[1].lower()
+            applicant = applications_collection.find_one({"email": target_email})
+            if not applicant:
+                tg_send_message(ADMIN_CHAT_ID, f"❌ No applicant with email {target_email}")
+                return "ok", 200
+
+            applications_collection.update_one(
+                {"_id": applicant["_id"]},
+                {"$set": {"status": "activated"}}
+            )
+
+            tgt_chat_id = applicant.get("telegram_id")
+            if tgt_chat_id:
+                tg_send_message(int(tgt_chat_id), "🎉 Your account has been activated. You can log in now.")
+            tg_send_message(ADMIN_CHAT_ID, f"✅ Activated {target_email}")
+            return "ok", 200
+
     # fallback
     tg_send_message(chat_id, "Please type /start to begin.")
     return "ok", 200
