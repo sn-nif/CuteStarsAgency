@@ -1,0 +1,84 @@
+{
+  "name": "CuteStars Video Automator",
+  "flow": [
+    {
+      "id": "1",
+      "module": "schedule",
+      "metadata": {
+        "designer": {
+          "messages": [],
+          "x": 30,
+          "y": 40
+        }
+      },
+      "settings": {
+        "type": "time",
+        "every": "2h"  // runs every two hours (5 times per 10-hour shift)
+      }
+    },
+    {
+      "id": "2",
+      "module": "http:Make a request",
+      "metadata": {
+        "designer": {
+          "messages": [],
+          "x": 220,
+          "y": 40
+        }
+      },
+      "settings": {
+        "method": "GET",
+        "url": "https://cutestars-backend.onrender.com/get-next-video?lang=en",
+        "parseResponse": true,
+        "responseFormat": "json"
+      }
+    },
+    {
+      "id": "3",
+      "module": "instagram:Create a video post",
+      "metadata": {
+        "designer": {
+          "messages": [],
+          "x": 410,
+          "y": 40
+        }
+      },
+      "settings": {
+        "videoUrl": "{{2.response.video_url}}",
+        "caption": "{{2.response.caption}}"
+      }
+    },
+    {
+      "id": "4",
+      "module": "http:Make a request",
+      "metadata": {
+        "designer": {
+          "messages": [],
+          "x": 600,
+          "y": 40
+        }
+      },
+      "settings": {
+        "method": "DELETE",
+        "url": "https://cutestars-backend.onrender.com/delete-video",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "cloudinary_id": "{{2.response.cloudinary_id}}"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "scenario": {
+      "sequential": true,
+      "maxErrors": 5,
+      "autoCommit": false
+    },
+    "designer": {
+      "orphans": []
+    }
+  }
+}
