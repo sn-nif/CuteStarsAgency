@@ -435,7 +435,9 @@ const ApplicationForm = () => {
                   ))}
                 </div>
               )}
-
+              <input type="hidden" name="latitude" id="latitude" />
+              <input type="hidden" name="longitude" id="longitude" />
+              <input type="hidden" name="geoAccuracy" id="geoAccuracy" />
               <Button type="submit" disabled={isSubmitting} className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:to-yellow-700 text-black py-3 rounded-xl text-lg font-semibold">
                 {isSubmitting ? (
                   <>
