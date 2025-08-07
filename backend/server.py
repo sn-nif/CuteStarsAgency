@@ -489,8 +489,13 @@ def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
         return 500, str(e)
 
 def set_state(chat_id, **fields):
+    from datetime import datetime
     fields["updated_at"] = datetime.utcnow()
-    sessions.update_one({"chat_id": chat_id}, {"$set": fields}, upsert=True)
+    sessions.update_one(
+        {"chat_id": chat_id},
+        {"$set": fields, "$setOnInsert": {"chat_id": chat_id}},
+        upsert=True,
+    )
 
 def get_state(chat_id):
     return sessions.find_one({"chat_id": chat_id}) or {}
