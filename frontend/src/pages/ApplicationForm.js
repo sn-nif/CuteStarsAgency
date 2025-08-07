@@ -10,6 +10,10 @@ import {
 import axios from "axios";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
+import { useNavigate } from "react-router-dom";
+import ThankYou from "./pages/ThankYou";
+
+
 
 const API = "https://cutestars-backend.onrender.com";
 
@@ -229,6 +233,7 @@ const ApplicationForm = () => {
     geoCity: "",
     geoRegion: ""
   });
+  const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -335,7 +340,7 @@ const ApplicationForm = () => {
       await axios.post(`${API}/apply`, form, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      setShowSuccessModal(true);
+      navigate("/thank-you");
       setFormData({
         name: "",
         age: "",
