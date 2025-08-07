@@ -435,3 +435,15 @@ def create_admin_user():
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
     app.run(host="0.0.0.0", port=PORT)
+
+from automation.video_generator import generate_video_post
+from flask import request, jsonify
+
+@app.route("/get-next-video", methods=["GET"])
+def get_next_video():
+    lang = request.args.get("lang", "en")
+    try:
+        video_post = generate_video_post(lang)
+        return jsonify(video_post), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
