@@ -470,7 +470,7 @@ from datetime import datetime
 # simple session collection for bot conversation
 sessions = db["bot_sessions"]  # docs: { chat_id, state, language, email, updated_at }
 
-LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
+l
 
 def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
     payload = {"chat_id": chat_id, "text": text}
