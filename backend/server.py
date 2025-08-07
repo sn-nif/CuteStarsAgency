@@ -434,12 +434,19 @@ def create_admin_user():
 
 from automation.video_generator import generate_video_post
 
-@app.route("/get-next-video", methods=["GET"])
+from flask import jsonify
+
+@app.route('/get-next-video')
 def get_next_video():
-    lang = request.args.get("lang", "en")
     try:
-        video_post = generate_video_post(lang)
-        return jsonify(video_post), 200
+        # Simulate your logic here
+        video = get_smart_video_logic()
+
+        if not video:
+            return jsonify({"error": "No suitable video found."}), 404
+
+        return jsonify(video), 200
+
     except Exception as e:
         import traceback
         return jsonify({
