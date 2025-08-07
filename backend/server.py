@@ -11,8 +11,11 @@ import pycountry
 import traceback
 from openai import OpenAI
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+# Load environment variables FIRST
+load_dotenv()
+
+# OpenAI client (reads OPENAI_API_KEY from env)
+openai_client = OpenAI()
 
 # Load environment variables FIRST
 load_dotenv()
@@ -514,15 +517,19 @@ def telegram_webhook():
 
     text = (msg.get("text") or "").strip()
 
-    # /start → ask for language
+        # /start → ask for language
     if text.lower().startswith("/start"):
         set_state(chat_id, state="awaiting_language")
         keyboard = {
             "keyboard": [[{"text": lang}] for lang in LANGUAGES],
             "resize_keyboard": True,
-            "one_time_keyboard": True
+            "one_time_keyboard": True,
         }
-        tg_send_message(chat_id, "👋 Welcome! Please choose your preferred language:", reply_markup=keyboard)
+        tg_send_message(
+            chat_id,
+            "👋 Welcome! Please choose your preferred language:",
+            reply_markup=keyboard,
+        )
         return "ok", 200
 
     st = get_state(chat_id)
@@ -530,85 +537,115 @@ def telegram_webhook():
 
     # language → ask for email
     if state == "awaiting_language":
-        language = text
+        language = text.strip()
         if language not in LANGUAGES:
             tg_send_message(chat_id, "Please pick a language from the buttons.")
             return "ok", 200
+
         set_state(chat_id, state="awaiting_email", language=language)
-        tg_send_message(chat_id, "📧 Please enter your email (same one used in the application):")
-        return "ok", 200
-
-    if state == "awaiting_email":
-    email = text.strip().lower()
-    app = applications_collection.find_one({"email": email})
-    if app:
-        set_state(chat_id, state="job_intro")
-
-        # Use GPT to generate the job explanation in the applicant's chosen language
-        chosen_lang = st.get("language", "English")
-        gpt_prompt = f"""
-        You are the recruiter for Cute Stars Agency. 
-        Speak in {chosen_lang}. 
-        Briefly explain to the applicant what the job is, the benefits, payment schedule, and requirements. 
-        Then tell them they can ask any questions before moving forward.
-        Keep it friendly but professional.
-        """
-
-        gpt_response = openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are an assistant that explains jobs clearly and answers applicant questions."},
-                {"role": "user", "content": gpt_prompt}
-            ],
-            temperature=0.7
-        )
-
-        tg_send_message(chat_id, gpt_response.choices[0].message.content)
-    else:
-        tg_send_message(chat_id, "❌ Sorry, we couldn’t find your application with that email. Please try again.")
-    return "ok", 200
-
-        # Save telegram_id + language
-        applications_collection.update_one(
-            {"_id": applicant["_id"]},
-            {"$set": {"telegram_id": chat_id, "language": st.get("language")}}
-        )
-    if state == "job_intro":
-    user_question = text.strip()
-
-    # If user says "Accept" → move to terms step
-    if user_question.lower() in ["accept", "i accept", "yes"]:
-        set_state(chat_id, state="awaiting_terms")
-        tg_send_message(chat_id, "📜 Here are the terms of the job. Please read carefully...")
-        return "ok", 200
-
-    # Otherwise, let GPT answer
-    chosen_lang = st.get("language", "English")
-    gpt_followup = f"""
-    You are a recruiter for Cute Stars Agency.
-    The applicant has already received the job description.
-    They now ask: '{user_question}'.
-    Respond in {chosen_lang} and be friendly, informative, and concise.
-    """
-
-    gpt_answer = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You answer applicant questions based on the job description provided earlier."},
-            {"role": "user", "content": gpt_followup}
-        ],
-        temperature=0.7
-    )
-
-    tg_send_message(chat_id, gpt_answer.choices[0].message.content)
-    return "ok", 200
-        # Ask Terms
-        set_state(chat_id, state="awaiting_terms", email=email)
         tg_send_message(
             chat_id,
-            "📄 Please confirm you accept the terms of service and our privacy policy.\nReply with *I accept* to continue.",
-            parse_mode="Markdown"
+            "📧 Please enter your email (same one you used in the application):",
         )
+        return "ok", 200
+
+    # email → verify + save → GPT job intro
+    if state == "awaiting_email":
+        email = text.strip().lower()
+        applicant = applications_collection.find_one({"email": email})
+
+        if not applicant:
+            tg_send_message(
+                chat_id,
+                "❌ Sorry, we couldn’t find your application with that email. Please try again.",
+            )
+            return "ok", 200
+
+        # Save telegram_id + language + email on the applicant
+        applications_collection.update_one(
+            {"_id": applicant["_id"]},
+            {"$set": {"telegram_id": chat_id, "language": st.get("language")}},
+        )
+        set_state(chat_id, state="job_intro", email=email)
+
+        # GPT: job explanation in chosen language
+        chosen_lang = st.get("language", "English")
+        gpt_prompt = (
+            "You are the recruiter for Cute Stars Agency. "
+            f"Speak in {chosen_lang}. "
+            "Briefly explain the role, responsibilities, benefits, payment schedule, and requirements. "
+            "Then invite them to ask any questions before moving forward. "
+            "Friendly but professional. Keep it concise (120–180 words)."
+        )
+
+        try:
+            gpt_response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You explain jobs clearly and answer applicant questions.",
+                    },
+                    {"role": "user", "content": gpt_prompt},
+                ],
+                temperature=0.7,
+            )
+            reply = gpt_response.choices[0].message.content
+        except Exception as e:
+            reply = (
+                "Here's a quick overview of the role and the process. "
+                "Feel free to ask any questions!"
+            )
+            print("OpenAI error:", e)
+
+        tg_send_message(chat_id, reply)
+        tg_send_message(
+            chat_id,
+            "When you're ready to proceed, type *I accept*.",
+            parse_mode="Markdown",
+        )
+        return "ok", 200
+
+    # continuous Q&A with GPT until they accept
+    if state == "job_intro":
+        user_msg = text.strip().lower()
+
+        if user_msg in {"accept", "i accept", "yes"}:
+            set_state(chat_id, state="awaiting_terms")
+            tg_send_message(
+                chat_id,
+                "📜 Great! Please confirm you accept our terms of service and privacy policy. "
+                "Reply with *I accept* to continue.",
+                parse_mode="Markdown",
+            )
+            return "ok", 200
+
+        # Otherwise answer with GPT
+        chosen_lang = st.get("language", "English")
+        qna_prompt = (
+            "You are a recruiter for Cute Stars Agency. "
+            "The applicant already received the job description. "
+            f"Answer this follow‑up question in {chosen_lang}, friendly, concise: "
+            f"'{text.strip()}'"
+        )
+        try:
+            gpt_answer = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You answer applicant questions about the job clearly and helpfully.",
+                    },
+                    {"role": "user", "content": qna_prompt},
+                ],
+                temperature=0.7,
+            )
+            answer = gpt_answer.choices[0].message.content
+        except Exception as e:
+            answer = "Thanks for the question! Please type *I accept* if you're ready to proceed."
+            print("OpenAI error:", e)
+
+        tg_send_message(chat_id, answer)
         return "ok", 200
 
     # TERMS → Q&A prompt
