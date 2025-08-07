@@ -149,6 +149,7 @@
             <th>ip City</th>
             <th>ip Region</th>
             <th>ip Country</th>
+            <th>Browser Location</th>
             <th>Photos</th>
           </tr>
         </thead>
@@ -267,6 +268,11 @@
               <td>${app.ip_city || "—"}</td>
               <td>${app.ip_region || "—"}</td>
               <td>${app.ip_country || "—"}</td>
+              <td>
+                ${app.geo_latitude && app.geo_longitude 
+                  ? `<a href="https://maps.google.com/?q=${app.geo_latitude},${app.geo_longitude}" target="_blank">📍 View</a><br><small>${app.geo_accuracy || "?"}m</small>`
+                      : "—"}
+              </td>
               <td>${app.photos.map(url => `<img src="${url}" onclick="viewImage('${url}')" />`).join("")}</td>
             `;
             body.appendChild(row);
