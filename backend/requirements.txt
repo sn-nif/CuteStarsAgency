@@ -11,4 +11,3 @@ ffmpeg
 gTTS==2.3.2
 ffmpeg-python
 python-telegram-bot==20.8
-python-telegram-bot==20.7
