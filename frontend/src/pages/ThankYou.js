@@ -8,7 +8,7 @@ const ThankYou = () => {
         <CheckCircle className="w-16 h-16 mx-auto text-green-500 mb-4" />
         <h1 className="text-3xl font-bold mb-4">Application Submitted</h1>
         <p className="mb-6 text-gray-300">
-          Thank you for applying to <span className="text-gold-500">Cute Stars Agency</span>!
+          Thank you for applying to <span className="text-yellow-400">Cute Stars Agency</span>!
         </p>
         <p className="mb-6 text-gray-400">
           Please continue the onboarding process on Telegram by clicking the button below:
@@ -17,7 +17,7 @@ const ThankYou = () => {
           href="https://t.me/AiSiva_bot"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block bg-gold-500 hover:bg-gold-600 text-black font-semibold px-6 py-3 rounded-lg transition"
+          className="inline-block bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-semibold px-6 py-3 rounded-lg shadow-lg transition"
         >
           Open Telegram Bot
         </a>
