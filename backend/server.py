@@ -386,7 +386,21 @@ def delete_applications():
     result = applications_collection.delete_many({ "email": { "$in": emails } })
 
     return jsonify({ "deleted": result.deleted_count }), 200
+@app.route("/api/applications", methods=["GET"])
+def api_applications():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
 
+    data = list(applications_collection.find({}, {"_id": 0}))
+    # add country flag safely
+    def _flag(name):
+        try:
+            return country_to_flag(name or "")
+        except:
+            return ""
+    for app in data:
+        app["country_flag"] = _flag(app.get("country"))
+    return jsonify(data), 200
 # ✅ Settings API — Admin + Users
 @app.route("/api/add-user", methods=["POST"])
 def add_user():
