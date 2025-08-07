@@ -10,6 +10,10 @@ from bson import ObjectId
 import pycountry
 import traceback
 from openai import OpenAI
+from pypdf import PdfReader
+import io
+import re
+import numpy as np
 
 # Load environment variables FIRST
 load_dotenv()
@@ -46,12 +50,90 @@ client = MongoClient(MONGO_URI)
 db = client["CuteStarsDB"]
 applications_collection = db["applications"]
 users_collection = db["admin_users"]
+knowledge_collection = db["knowledge"]  # { _id, lang, chunk_id, text, embedding: [floats] }
+
+# -------- Knowledge helpers (PDF -> chunks -> embeddings) --------
+EMBED_MODEL = "text-embedding-3-small"
+
+def _normalize_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+def chunk_text(text: str, max_tokens: int = 800) -> list[str]:
+    """
+    Simple chunker by characters ~ 4 chars ~= 1 token (rough heuristic).
+    Adjust if you see too-long prompts.
+    """
+    text = _normalize_ws(text)
+    max_chars = max_tokens * 4
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + max_chars)
+        # try to cut at sentence boundary
+        cut = text.rfind(". ", start, end)
+        if cut == -1 or cut < start + int(0.6 * max_chars):
+            cut = end
+        chunks.append(text[start:cut].strip())
+        start = cut
+    return [c for c in chunks if c]
+
+def get_embedding(text: str) -> list[float]:
+    emb = openai_client.embeddings.create(
+        model=EMBED_MODEL,
+        input=text
+    )
+    return emb.data[0].embedding
+
+def upsert_pdf_chunks(file_bytes: bytes, lang: str):
+    reader = PdfReader(io.BytesIO(file_bytes))
+    full_text = ""
+    for page in reader.pages:
+        full_text += (page.extract_text() or "") + "\n"
+    chunks = chunk_text(full_text, max_tokens=800)
+
+    docs = []
+    for idx, ch in enumerate(chunks):
+        emb = get_embedding(ch)
+        docs.append({
+            "lang": lang,
+            "chunk_id": f"{lang}-{idx}",
+            "text": ch,
+            "embedding": emb,
+        })
+
+    # clear old docs for that lang, then insert
+    knowledge_collection.delete_many({"lang": lang})
+    if docs:
+        knowledge_collection.insert_many(docs)
+    return len(docs)
+
+def search_knowledge(query: str, lang: str, k: int = 5) -> list[dict]:
+    q_emb = np.array(get_embedding(query))
+    scored = []
+    for doc in knowledge_collection.find({"lang": lang}):
+        if "embedding" not in doc: 
+            continue
+        v = np.array(doc["embedding"])
+        sim = float(np.dot(q_emb, v) / (np.linalg.norm(q_emb)*np.linalg.norm(v) + 1e-9))
+        scored.append((sim, doc))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [d for _, d in scored[:k]]
+
+def build_context_for_intro(lang: str) -> str:
+    # broad query to pull the best overview chunks
+    docs = search_knowledge("overview, role, pay, requirements, onboarding, policies", lang, k=6)
+    return "\n\n".join(d["text"] for d in docs)
+
+def build_context_for_question(lang: str, question: str) -> str:
+    docs = search_knowledge(question, lang, k=6)
+    return "\n\n".join(d["text"] for d in docs)
+# -------- end knowledge helpers --------
 
 # Cloudinary setup
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"
 )
 
 # Telegram notifier
@@ -469,6 +551,21 @@ def create_admin_user():
         "permissions": ["view", "edit", "delete"]
     })
     return "✅ Admin created"
+@app.route("/admin/upload-pdf", methods=["POST"])
+def admin_upload_pdf():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file"}), 400
+    lang = request.form.get("lang", "English")
+    f = request.files["file"]
+    data = f.read()
+    try:
+        n = upsert_pdf_chunks(data, lang)
+        return jsonify({"status": "ok", "chunks": n, "lang": lang})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ===== Telegram Webhook (no python-telegram-bot) =====
 from datetime import datetime
@@ -485,7 +582,8 @@ def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMessage",
-            json=payload, timeout=15
+            json=payload,
+            timeout=15,
         )
         return r.status_code, r.text
     except Exception as e:
@@ -517,7 +615,7 @@ def telegram_webhook():
 
     text = (msg.get("text") or "").strip()
 
-        # /start → ask for language
+    # /start → ask for language
     if text.lower().startswith("/start"):
         set_state(chat_id, state="awaiting_language")
         keyboard = {
@@ -549,7 +647,7 @@ def telegram_webhook():
         )
         return "ok", 200
 
-    # email → verify + save → GPT job intro
+    # email → verify + save → GPT job intro (with knowledge)
     if state == "awaiting_email":
         email = text.strip().lower()
         applicant = applications_collection.find_one({"email": email})
@@ -561,21 +659,22 @@ def telegram_webhook():
             )
             return "ok", 200
 
-        # Save telegram_id + language + email on the applicant
+        # Save telegram_id + language onto the applicant
         applications_collection.update_one(
             {"_id": applicant["_id"]},
             {"$set": {"telegram_id": chat_id, "language": st.get("language")}},
         )
-        set_state(chat_id, state="job_intro", email=email)
 
-        # GPT: job explanation in chosen language
+        # Use retrieved context from the PDF
         chosen_lang = st.get("language", "English")
-        gpt_prompt = (
-            "You are the recruiter for Cute Stars Agency. "
-            f"Speak in {chosen_lang}. "
-            "Briefly explain the role, responsibilities, benefits, payment schedule, and requirements. "
-            "Then invite them to ask any questions before moving forward. "
-            "Friendly but professional. Keep it concise (120–180 words)."
+        context = build_context_for_intro(chosen_lang)  # <- from your knowledge helpers
+        if not context:
+            context = "No uploaded knowledge yet. Provide a short generic overview."
+
+        prompt_user = (
+            f"Speak in {chosen_lang}. Using ONLY the provided context, briefly explain the job, "
+            f"benefits, pay cadence, and requirements in 120–180 words. Invite the applicant to ask questions.\n\n"
+            f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
         )
 
         try:
@@ -584,33 +683,30 @@ def telegram_webhook():
                 messages=[
                     {
                         "role": "system",
-                        "content": "You explain jobs clearly and answer applicant questions.",
+                        "content": "You are a recruiter. Answer strictly from context. If something is missing, say you'll confirm with an admin.",
                     },
-                    {"role": "user", "content": gpt_prompt},
+                    {"role": "user", "content": prompt_user},
                 ],
-                temperature=0.7,
+                temperature=0.4,
             )
-            reply = gpt_response.choices[0].message.content
+            intro_text = gpt_response.choices[0].message.content
         except Exception as e:
-            reply = (
-                "Here's a quick overview of the role and the process. "
+            print("OpenAI intro error:", e)
+            intro_text = (
+                "Here’s a quick overview of the role and process. (Context not available right now.) "
                 "Feel free to ask any questions!"
             )
-            print("OpenAI error:", e)
 
-        tg_send_message(chat_id, reply)
-        tg_send_message(
-            chat_id,
-            "When you're ready to proceed, type *I accept*.",
-            parse_mode="Markdown",
-        )
+        tg_send_message(chat_id, intro_text)
+        set_state(chat_id, state="job_intro", email=email)
         return "ok", 200
 
-    # continuous Q&A with GPT until they accept
+    # continuous Q&A with GPT (with knowledge) until they accept
     if state == "job_intro":
-        user_msg = text.strip().lower()
+        user_msg = text.strip()
 
-        if user_msg in {"accept", "i accept", "yes"}:
+        # accept → terms
+        if user_msg.lower() in {"accept", "i accept", "yes"}:
             set_state(chat_id, state="awaiting_terms")
             tg_send_message(
                 chat_id,
@@ -620,32 +716,35 @@ def telegram_webhook():
             )
             return "ok", 200
 
-        # Otherwise answer with GPT
+        # Otherwise answer with GPT using knowledge
         chosen_lang = st.get("language", "English")
+        context = build_context_for_question(chosen_lang, user_msg)  # <- from helpers
+        if not context:
+            context = "No relevant context segments found."
+
         qna_prompt = (
-            "You are a recruiter for Cute Stars Agency. "
-            "The applicant already received the job description. "
-            f"Answer this follow‑up question in {chosen_lang}, friendly, concise: "
-            f"'{text.strip()}'"
+            f"Use the context to answer in {chosen_lang}, friendly and concise.\n"
+            f"Question: {user_msg}\n\n"
+            f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
         )
+
         try:
             gpt_answer = openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
-                        "content": "You answer applicant questions about the job clearly and helpfully.",
+                        "content": "You answer applicant questions about the job clearly using the provided context only.",
                     },
                     {"role": "user", "content": qna_prompt},
                 ],
-                temperature=0.7,
+                temperature=0.5,
             )
             answer = gpt_answer.choices[0].message.content
         except Exception as e:
-            answer = "Thanks for the question! Please type *I accept* if you're ready to proceed."
-            print("OpenAI error:", e)
-
-        tg_send_message(chat_id, answer)
+            print("OpenAI Q&A error:", e)
+            answer = "Thanks for the question! If you’re ready, type *I accept* to proceed."
+        tg_send_message(chat_id, answer, parse_mode="Markdown")
         return "ok", 200
 
     # TERMS → Q&A prompt
@@ -657,19 +756,19 @@ def telegram_webhook():
         tg_send_message(
             chat_id,
             "❓ Do you have any questions? Send them now, or type *skip*.",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
         return "ok", 200
 
     # Optional Q&A → Platform
     if state == "qna_or_skip":
         if text.strip().lower() != "skip":
-            # (Optional) Integrate GPT here; for now, acknowledge
             tg_send_message(chat_id, "Thanks! Our team will reply if needed. Type *skip* to continue.")
             return "ok", 200
         keyboard = {
             "keyboard": [[{"text": "Android"}], [{"text": "iOS"}]],
-            "resize_keyboard": True, "one_time_keyboard": True
+            "resize_keyboard": True,
+            "one_time_keyboard": True,
         }
         set_state(chat_id, state="awaiting_platform")
         tg_send_message(chat_id, "📱 Which phone do you use? (Android or iOS)", reply_markup=keyboard)
@@ -696,7 +795,7 @@ def telegram_webhook():
         if email:
             applications_collection.update_one(
                 {"email": email},
-                {"$set": {"application_id": app_id}}
+                {"$set": {"application_id": app_id}},
             )
 
         set_state(chat_id, state="waiting_approval")
@@ -725,7 +824,7 @@ def telegram_webhook():
                         requests.post(
                             f"https://api.telegram.org/bot{os.getenv('TELEGRAM_BOT_TOKEN')}/sendMediaGroup",
                             json={"chat_id": ADMIN_CHAT_ID, "media": media_group},
-                            timeout=20
+                            timeout=20,
                         )
         except Exception as e:
             print("Admin notify error:", e)
@@ -744,7 +843,7 @@ def telegram_webhook():
 
             applications_collection.update_one(
                 {"_id": applicant["_id"]},
-                {"$set": {"status": "activated"}}
+                {"$set": {"status": "activated"}},
             )
 
             tgt_chat_id = applicant.get("telegram_id")
