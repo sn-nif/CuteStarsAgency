@@ -600,7 +600,12 @@ def set_state(chat_id, **fields):
 
 def get_state(chat_id):
     return sessions.find_one({"chat_id": chat_id}) or {}
-
+@app.route("/settings", methods=["GET"])
+def settings_page():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    return render_template("settings.html")
+    
 @app.route("/webhook", methods=["POST"])
 def telegram_webhook():
     update = request.get_json(force=True, silent=True) or {}
