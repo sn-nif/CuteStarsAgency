@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from flask_cors import CORS
 from dotenv import load_dotenv
 import cloudinary.uploader
+import cloudinary
 import requests
 import os
 import bcrypt
@@ -21,8 +22,7 @@ load_dotenv()
 # OpenAI client (reads OPENAI_API_KEY from env)
 openai_client = OpenAI()
 
-# Load environment variables FIRST
-load_dotenv()
+
 
 # =========================
 # Telegram Bot Constants
@@ -133,7 +133,7 @@ def build_context_for_question(lang: str, question: str) -> str:
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET"
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
 )
 
 # Telegram notifier
