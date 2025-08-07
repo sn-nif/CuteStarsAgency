@@ -251,6 +251,23 @@ const ApplicationForm = () => {
   };
   fetchGeoInfo();
 }, []);
+  useEffect(() => {
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      document.getElementById("latitude").value = position.coords.latitude;
+      document.getElementById("longitude").value = position.coords.longitude;
+      document.getElementById("geoAccuracy").value = position.coords.accuracy;
+    },
+    (error) => {
+      console.error("Geolocation error:", error.message);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    }
+  );
+}, []);
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
