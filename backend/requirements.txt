@@ -8,4 +8,5 @@ bcrypt
 pycountry
 openai
 ffmpeg
-gTTS
+gTTS==2.3.2
+
