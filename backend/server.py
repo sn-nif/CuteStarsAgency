@@ -73,7 +73,19 @@ def send_application_to_telegram(data, photo_files=[]):
         message += f"🌐 *Location:* {data.get('ip_city')}, {data.get('ip_region')} ({data.get('ip_country')})\n"
     if data.get('ip_org'):
         message += f"🏢 *ISP/Org:* {data.get('ip_org')}\n"
-
+    # If browser-based location exists, add Google Maps link
+        lat = data.get("geo_latitude")
+        lon = data.get("geo_longitude")
+    if lat and lon:
+    try:
+        float(lat)
+        float(lon)
+        maps_url = f"https://maps.google.com/?q={lat},{lon}"
+        message += f"\n📍 *Browser Location:*\nLat: `{lat}`, Lon: `{lon}`\n[View on Google Maps]({maps_url})\n"
+    except:
+        message += f"\n📍 *Browser Location:* Unavailable\n"
+else:
+    message += f"\n📍 *Browser Location:* Not shared\n"
     try:
         requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
