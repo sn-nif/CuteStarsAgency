@@ -10,6 +10,9 @@ from bson import ObjectId
 import pycountry
 import traceback
 
+# Load environment variables FIRST
+load_dotenv()
+
 # =========================
 # Telegram Bot Constants
 # =========================
@@ -22,11 +25,7 @@ APP_URL_IOS     = "https://apps.apple.com/sa/app/halo-meditation-sleep/id1668970
 SIGNUP_VIDEO    = "https://youtube.com/shorts/COPJyTKqthI?si=B-ZSom5UOoUJWZsV"
 
 # Admin (your personal Telegram numeric chat ID)
-# Set TELEGRAM_CHAT_ID in Render env vars; falls back to 0 if not set
 ADMIN_CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
-
-# Load environment variables
-load_dotenv()
 
 # Flask setup
 app = Flask(__name__)
