@@ -106,7 +106,21 @@ def upsert_pdf_chunks(file_bytes: bytes, lang: str):
     if docs:
         knowledge_collection.insert_many(docs)
     return len(docs)
+# Mongo collections
+settings_collection = db["settings"]  # single doc: { _id: "global", webhook_enabled: bool, primary_bot_url, fallback_bot_url }
 
+def get_settings():
+    doc = settings_collection.find_one({"_id": "global"})
+    if not doc:
+        # defaults
+        doc = {
+            "_id": "global",
+            "webhook_enabled": True,
+            "primary_bot_url": "https://t.me/AiSiva_bot",
+            "fallback_bot_url": "https://t.me/some_other_bot"
+        }
+        settings_collection.insert_one(doc)
+    return doc
 def search_knowledge(query: str, lang: str, k: int = 5) -> list[dict]:
     q_emb = np.array(get_embedding(query))
     scored = []
@@ -230,6 +244,43 @@ def send_application_to_telegram(data, photo_files=[]):
     except Exception as e:
         print("❌ Failed to send media group:", str(e))
 
+# Admin settings (requires session)
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if request.method == "GET":
+        s = get_settings()
+        return jsonify({
+            "webhook_enabled": bool(s.get("webhook_enabled", True)),
+            "primary_bot_url": s.get("primary_bot_url", "https://t.me/AiSiva_bot"),
+            "fallback_bot_url": s.get("fallback_bot_url", "https://t.me/some_other_bot"),
+        }), 200
+
+    data = request.get_json(force=True, silent=True) or {}
+    webhook_enabled = bool(data.get("webhook_enabled", True))
+    primary_bot_url = data.get("primary_bot_url", "https://t.me/AiSiva_bot")
+    fallback_bot_url = data.get("fallback_bot_url", "https://t.me/some_other_bot")
+
+    settings_collection.update_one(
+        {"_id": "global"},
+        {"$set": {
+            "webhook_enabled": webhook_enabled,
+            "primary_bot_url": primary_bot_url,
+            "fallback_bot_url": fallback_bot_url
+        }},
+        upsert=True
+    )
+    return jsonify({"status": "ok"}), 200
+
+
+# Public endpoint for the Thank You page to decide which bot link to show
+@app.route("/public/bot-link", methods=["GET"])
+def public_bot_link():
+    s = get_settings()
+    url = s.get("primary_bot_url") if s.get("webhook_enabled", True) else s.get("fallback_bot_url")
+    return jsonify({"url": url}), 200
 @app.route("/")
 def home():
     return "✅ CuteStars backend is running and connected!"
@@ -633,7 +684,11 @@ def telegram_webhook():
         return "ok", 200
 
     text = (msg.get("text") or "").strip()
-
+    # Respect admin toggle: if webhook is off, ignore all updates
+    s = get_settings()
+    if not s.get("webhook_enabled", True):
+        # silently succeed so Telegram doesn't retry
+        return "ok", 200
     # /start → ask for language
     if text.lower().startswith("/start"):
         set_state(chat_id, state="awaiting_language")
