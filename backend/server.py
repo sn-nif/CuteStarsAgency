@@ -195,7 +195,9 @@ def apply():
         client_city = request.form.get("geoCity")
         client_country = request.form.get("geoCountry")
         client_region = request.form.get("geoRegion")
-
+        latitude = request.form.get("latitude")
+        longitude = request.form.get("longitude")
+        geo_accuracy = request.form.get("geoAccuracy")
         if client_ip:
             geo["ip"] = client_ip
         if client_city:
@@ -241,6 +243,9 @@ def apply():
             "telegram": telegram,
             "photos": uploaded_urls,
             **geo
+            "geo_latitude": latitude,
+            "geo_longitude": longitude,
+            "geo_accuracy": geo_accuracy,
         }
         applications_collection.insert_one(applicant_data)
 
