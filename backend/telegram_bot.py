@@ -1,4 +1,7 @@
 import os
+import telegram
+print(f"✅ python-telegram-bot version: {telegram.__version__}")
+
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
