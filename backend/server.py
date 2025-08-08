@@ -131,7 +131,86 @@ def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
     except Exception as e:
         print("Telegram sendMessage error:", e)
         return 500, str(e)
+def send_application_to_telegram(applicant, photo_urls=None):
+    """
+    Sends a summary of the application + up to 10 photos to your admin Telegram chat.
+    Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your environment.
+    """
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+    if not token or not chat_id:
+        print("⚠️ Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID; skipping Telegram notify.")
+        return
 
+    photo_urls = photo_urls or []
+
+    # Build text
+    flag = country_to_flag(applicant.get("country"))
+    msg = [
+        "📥 *New Application Received*",
+        "",
+        f"👩🏻 *Name:* {applicant.get('name')}",
+        f"🎂 *Age:* {applicant.get('age')}",
+        f"📧 *Email:* {applicant.get('email')}",
+        f"📱 *Phone:* +{applicant.get('contact')}",
+        f"🌍 *Nationality:* {flag} {applicant.get('country')}",
+    ]
+    if applicant.get("instagram"):
+        msg.append(f"📸 *Instagram:* {applicant.get('instagram')}")
+    if applicant.get("tiktok"):
+        msg.append(f"🎵 *TikTok:* {applicant.get('tiktok')}")
+    if applicant.get("telegram"):
+        msg.append(f"📬 *Telegram:* @{applicant.get('telegram')}")
+
+    # IP / Geo
+    if applicant.get("ip"):
+        msg.append(f"\n🛰️ *IP Address:* {applicant.get('ip')}")
+    if applicant.get("ip_city") or applicant.get("ip_country"):
+        msg.append(f"🌐 *Location:* {applicant.get('ip_city')}, {applicant.get('ip_region')} ({applicant.get('ip_country')})")
+    if applicant.get("ip_org"):
+        msg.append(f"🏢 *ISP/Org:* {applicant.get('ip_org')}")
+
+    # Browser location (lat/lon)
+    lat = applicant.get("geo_latitude")
+    lon = applicant.get("geo_longitude")
+    acc = applicant.get("geo_accuracy")
+    if lat and lon:
+        try:
+            float(lat); float(lon)
+            maps_url = f"https://maps.google.com/?q={lat},{lon}"
+            msg.append(f"\n📍 *Browser Location:*\nLat: `{lat}`, Lon: `{lon}` ({acc or '?'}m)\n[View on Google Maps]({maps_url})")
+        except Exception:
+            msg.append("\n📍 *Browser Location:* Unavailable")
+    else:
+        msg.append("\n📍 *Browser Location:* Not shared")
+
+    text = "\n".join(msg)
+
+    # 1) send text
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            print("❌ Telegram sendMessage error:", r.text)
+    except Exception as e:
+        print("❌ Telegram sendMessage exception:", e)
+
+    # 2) send up to 10 photos as a media group
+    if photo_urls:
+        group = [{"type": "photo", "media": u} for u in photo_urls[:10]]
+        try:
+            r2 = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMediaGroup",
+                json={"chat_id": chat_id, "media": group},
+                timeout=20,
+            )
+            if r2.status_code != 200:
+                print("❌ Telegram sendMediaGroup error:", r2.text)
+        except Exception as e:
+            print("❌ Telegram sendMediaGroup exception:", e)
 def set_state(chat_id, **fields):
     fields["updated_at"] = datetime.utcnow()
     sessions.update_one(
