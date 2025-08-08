@@ -13,3 +13,4 @@ pypdf==4.2.0
 numpy
 PyMuPDF
 langdetect
+PyPDF2
