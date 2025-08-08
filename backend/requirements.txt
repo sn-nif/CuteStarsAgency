@@ -16,3 +16,4 @@ langdetect
 PyPDF2
 faiss-cpu
 langchain
+langchain-community
