@@ -118,22 +118,16 @@
         input:checked + .slider:before{transform:translateX(24px)}
       </style>
 
-      <!-- 📚 Bot Knowledge (Upload PDF) -->
+      <!-- 📚 Bot Knowledge (Upload ) -->
       <hr style="margin: 30px 0; border: 1px solid #333;" />
       <h2 style="color: gold;">📚 Bot Knowledge (Upload PDF)</h2>
       <form id="pdfForm" enctype="multipart/form-data" style="margin-top:10px;">
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
           <label style="min-width:120px;">Language</label>
-          <select id="pdfLang" name="lang" required style="padding:10px; border-radius:4px; border:none;">
-            <option value="English">English</option>
-            <option value="Spanish">Spanish</option>
-            <option value="Portuguese">Portuguese</option>
-            <option value="Russian">Russian</option>
-            <option value="Serbian">Serbian</option>
-          </select>
+          
         </div>
         <div style="margin-top:10px;">
-          <input id="pdfFile" type="file" name="file" accept="application/pdf" required />
+          <input id="file" type="file" accept=".pdf,.json">
         </div>
         <button type="submit" style="margin-top:12px;">Upload & Index PDF</button>
         <div id="pdfMsg" style="margin-top:8px; color:#bbb;"></div>
