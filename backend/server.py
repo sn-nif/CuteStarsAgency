@@ -799,6 +799,28 @@ def debug_telegram_env():
         "token_masked": masked,
         "chat_id": chat,
     })
+@app.route("/debug/test-notify")
+def debug_test_notify():
+    try:
+        send_application_to_telegram({
+            "name": "Debug User",
+            "age": "25",
+            "email": "debug@example.com",
+            "contact": "123456",
+            "country": "Spain",
+            "instagram": "",
+            "tiktok": "",
+            "telegram": "",
+            "ip": "1.2.3.4",
+            "ip_city": "Madrid",
+            "ip_region": "Madrid",
+            "ip_country": "Spain",
+            "geo_latitude": "",
+            "geo_longitude": "",
+        }, photo_files=[])
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 # =========================
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
