@@ -1,77 +1,61 @@
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify
-from pymongo import MongoClient
-from flask_cors import CORS
-from dotenv import load_dotenv
-import cloudinary.uploader
+# server.py
+
+from __future__ import annotations
+
+import io
+import os
+import re
+import time
+import json
+import uuid
+import bcrypt
 import cloudinary
 import requests
-import os
-import bcrypt
-from bson import ObjectId
-import pycountry
-import traceback
-from pypdf import PdfReader
-import io
-import re
 import numpy as np
-import mimetypes
-import uuid
-import json
+import pycountry
+from bson import ObjectId
+from dotenv import load_dotenv
 from datetime import datetime
-import time
-import uuid
-import fitz  # PyMuPDF
+from pypdf import PdfReader            # PDF text extraction
+from flask import (
+    Flask, request, render_template, redirect, url_for,
+    session, jsonify
+)
+from flask_cors import CORS
+from pymongo import MongoClient
+import cloudinary.uploader
 from openai import OpenAI
-client_openai = OpenAI()
-from PyPDF2 import PdfReader
-#==================upload=====
-# Make sure your uploads folder exists
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-#==========
-DOCS = {}  # doc_id -> metadata dict
+
 # =========================
 # Boot / Config
 # =========================
 load_dotenv()
 
-openai_client = OpenAI()
-
-# Flask
-from flask import Flask
-from flask_cors import CORS
-import os
-
 app = Flask(__name__)
-
-# ========start of test======================
-# session + size limits + same-site cookie for cross-origin admin access
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB limit (adjust as needed)
-app.config["SESSION_COOKIE_SAMESITE"] = "None"
-app.config["SESSION_COOKIE_SECURE"] = True  # required when SAMESITE=None on HTTPS
-#===========
-from flask import jsonify, request, session
-
-@app.before_request
-def guard_knowledge_routes():
-    # Only protect write actions under /knowledge; list/health can be public
-    if request.path.startswith("/knowledge") and request.method in {"POST", "DELETE"}:
-        if "user" not in session:
-            return jsonify({"ok": False, "error": "Unauthorized"}), 401
-#===============end of test=========================
-    
-# Allow only your frontend domains & send cookies/sessions
-CORS(app, supports_credentials=True, resources={
-    r"/*": {  # apply to all routes
-        "origins": [
-            "https://cutestars.netlify.app",  # your live frontend
-            "http://localhost:5173",          # local dev (Vite)
-            "http://localhost:3000"           # local dev (CRA)
-        ]
-    }
-})
-
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key")
+
+# Single CORS init (includes admin and frontend)
+CORS(
+    app,
+    supports_credentials=True,
+    resources={r"/*": {
+        "origins": [
+            "https://cutestars.netlify.app",
+            "http://localhost:5173",
+            "http://localhost:3000"
+        ]
+    }}
+)
+
+# Upload dir
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Session/cookie hardening (needed if you proxy over HTTPS)
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
+
 # Mongo
 MONGO_URI = os.getenv("MONGODB_URI")
 PORT = int(os.getenv("PORT", 10000))
@@ -79,12 +63,9 @@ client = MongoClient(MONGO_URI)
 db = client["CuteStarsDB"]
 applications_collection = db["applications"]
 users_collection = db["admin_users"]
-knowledge_collection = db["knowledge"]
-sessions = db["bot_sessions"]         # { chat_id, state, language, email, updated_at }
-settings_collection = db["settings"]  # { webhook_enabled, bot_main_url, bot_alt_url }
-
-# In-memory store for uploaded bot knowledge files
-BOT_KNOWLEDGE = {}
+knowledge_collection = db["knowledge"]          # flat rows: one record per chunk
+sessions_coll = db["bot_sessions"]              # { chat_id, state, language, email, updated_at }
+settings_collection = db["settings"]            # { webhook_enabled, bot_main_url, bot_alt_url }
 
 # Cloudinary
 cloudinary.config(
@@ -92,6 +73,9 @@ cloudinary.config(
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET"),
 )
+
+# OpenAI client
+openai_client = OpenAI()
 
 # Telegram constants
 LANGUAGE, EMAIL = range(2)
@@ -101,73 +85,98 @@ APP_URL_IOS     = "https://apps.apple.com/sa/app/halo-meditation-sleep/id1668970
 SIGNUP_VIDEO    = "https://youtube.com/shorts/COPJyTKqthI?si=B-ZSom5UOoUJWZsV"
 ADMIN_CHAT_ID   = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 
+# In-memory doc list for admin table (metadata only)
+DOCS: dict[str, dict] = {}
+
 # =========================
-# Helpers
+# Guards
 # =========================
-def extract_jsonl_texts(raw_bytes: bytes, preferred_fields=("text","content","message","body","data")) -> list[str]:
-    """Return a list of text entries from a JSONL payload. Skips empty/invalid lines."""
-    texts = []
-    for i, line in enumerate(raw_bytes.splitlines()):
-        s = line.decode("utf-8", errors="ignore").strip()
-        if not s:
+@app.before_request
+def guard_knowledge_routes():
+    # Protect write actions; list/health can stay public
+    if request.path.startswith("/knowledge") and request.method in {"POST", "DELETE"}:
+        if "user" not in session:
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+
+# =========================
+# Embeddings / Index helpers (language-agnostic)
+# =========================
+EMBED_MODEL = "text-embedding-3-small"
+
+def _normalize_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "")).strip()
+
+def chunk_text(text: str, max_tokens: int = 800) -> list[str]:
+    """Rough char-based chunker (≈4 chars/token)."""
+    text = _normalize_ws(text)
+    max_chars = max_tokens * 4
+    out, i, n = [], 0, len(text)
+    while i < n:
+        j = min(n, i + max_chars)
+        cut = text.rfind(". ", i, j)
+        if cut == -1 or cut < i + int(max_chars * 0.6):
+            cut = j
+        out.append(text[i:cut].strip())
+        i = cut
+    return [c for c in out if c]
+
+def get_embedding(text: str) -> list[float]:
+    return openai_client.embeddings.create(model=EMBED_MODEL, input=text).data[0].embedding
+
+def index_into_vector_store(*, doc_id: str, name: str, kind: str, text: str) -> int:
+    """
+    Split `text` -> embed each chunk -> save flat rows into Mongo.
+    Returns number of chunks written.
+    """
+    chunks = chunk_text(text, max_tokens=800)
+    if not chunks:
+        return 0
+
+    rows = []
+    for i, ch in enumerate(chunks):
+        emb = get_embedding(ch)
+        rows.append({
+            "doc_id": doc_id,
+            "name": name,
+            "kind": kind,
+            "chunk_index": i,
+            "text": ch,
+            "embedding": emb,
+            "created_at": datetime.utcnow(),
+            # language-agnostic knowledge
+            "language": "all",
+        })
+
+    # Replace previous version of this doc_id if any
+    knowledge_collection.delete_many({"doc_id": doc_id})
+    knowledge_collection.insert_many(rows)
+    return len(rows)
+
+def search_knowledge(query: str, k: int = 6) -> list[dict]:
+    """Cosine similarity over flat rows in `knowledge_collection`."""
+    qv = np.array(get_embedding(query), dtype=np.float32)
+    scored: list[tuple[float, dict]] = []
+    # NOTE: paginate in production; this grabs first 2k rows for speed
+    for row in knowledge_collection.find({}, {"_id": 0, "text": 1, "embedding": 1}).limit(2000):
+        v = np.array(row.get("embedding", []), dtype=np.float32)
+        if v.size == 0:
             continue
-        try:
-            obj = json.loads(s)
-        except Exception:
-            # skip invalid lines rather than failing the whole upload
-            continue
-
-        # 1) if the object itself is a string -> use it
-        if isinstance(obj, str):
-            val = obj.strip()
-            if val:
-                texts.append(val)
-            continue
-
-        # 2) try common text fields
-        if isinstance(obj, dict):
-            found = None
-            for f in preferred_fields:
-                if f in obj and isinstance(obj[f], str) and obj[f].strip():
-                    found = obj[f].strip()
-                    break
-            if found:
-                texts.append(found)
-                continue
-            # 3) fallback: flatten the dict to text
-            texts.append("\n".join(f"{k}: {obj[k]}" for k in obj if isinstance(obj[k], (str, int, float))))
-            continue
-
-        # 4) list fallback
-        if isinstance(obj, list):
-            for item in obj:
-                if isinstance(item, str) and item.strip():
-                    texts.append(item.strip())
-        # non-string items are ignored
-    return [t for t in texts if t]
-
-def search_knowledge(query: str, top_k: int = 6) -> list[dict]:
-    # 1) embed the query
-    q_emb = client_openai.embeddings.create(
-        model="text-embedding-3-small",  # multilingual
-        input=query
-    ).data[0].embedding
-    q = np.array(q_emb, dtype=np.float32)
-
-    # 2) iterate all chunks across all docs
-    scored = []
-    for doc in knowledge_collection.find({}, {"chunks": 1}):
-        for ch in doc.get("chunks", []):
-            v = np.array(ch.get("embedding", []), dtype=np.float32)
-            if v.size == 0: 
-                continue
-            sim = float(np.dot(q, v) / (np.linalg.norm(q) * np.linalg.norm(v) + 1e-9))
-            scored.append((sim, ch["text"]))
-
-    # 3) top-k
+        sim = float(np.dot(qv, v) / (np.linalg.norm(qv) * np.linalg.norm(v) + 1e-9))
+        scored.append((sim, row))
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [t for _, t in scored[:top_k]]
+    return [row for _, row in scored[:k]]
 
+def build_context_for_intro() -> str:
+    docs = search_knowledge("overview, role, pay, onboarding, policies", k=6)
+    return "\n\n".join(d["text"] for d in docs)
+
+def build_context_for_question(question: str) -> str:
+    docs = search_knowledge(question, k=6)
+    return "\n\n".join(d["text"] for d in docs)
+
+# =========================
+# Misc helpers
+# =========================
 def country_to_flag(country_name):
     try:
         if not country_name:
@@ -177,7 +186,7 @@ def country_to_flag(country_name):
             country = pycountry.countries.search_fuzzy(country_name)[0]
         code = country.alpha_2
         return ''.join(chr(127397 + ord(c)) for c in code.upper())
-    except:
+    except Exception:
         return ''
 
 def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
@@ -195,11 +204,8 @@ def tg_send_message(chat_id, text, reply_markup=None, parse_mode=None):
     except Exception as e:
         print("Telegram sendMessage error:", e)
         return 500, str(e)
+
 def send_application_to_telegram(applicant, photo_urls=None):
-    """
-    Sends a summary of the application + up to 10 photos to your admin Telegram chat.
-    Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in your environment.
-    """
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     if not token or not chat_id:
@@ -207,8 +213,6 @@ def send_application_to_telegram(applicant, photo_urls=None):
         return
 
     photo_urls = photo_urls or []
-
-    # Build text
     flag = country_to_flag(applicant.get("country"))
     msg = [
         "📥 *New Application Received*",
@@ -225,8 +229,6 @@ def send_application_to_telegram(applicant, photo_urls=None):
         msg.append(f"🎵 *TikTok:* {applicant.get('tiktok')}")
     if applicant.get("telegram"):
         msg.append(f"📬 *Telegram:* @{applicant.get('telegram')}")
-
-    # IP / Geo
     if applicant.get("ip"):
         msg.append(f"\n🛰️ *IP Address:* {applicant.get('ip')}")
     if applicant.get("ip_city") or applicant.get("ip_country"):
@@ -234,7 +236,6 @@ def send_application_to_telegram(applicant, photo_urls=None):
     if applicant.get("ip_org"):
         msg.append(f"🏢 *ISP/Org:* {applicant.get('ip_org')}")
 
-    # Browser location (lat/lon)
     lat = applicant.get("geo_latitude")
     lon = applicant.get("geo_longitude")
     acc = applicant.get("geo_accuracy")
@@ -249,8 +250,6 @@ def send_application_to_telegram(applicant, photo_urls=None):
         msg.append("\n📍 *Browser Location:* Not shared")
 
     text = "\n".join(msg)
-
-    # 1) send text
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
@@ -262,7 +261,6 @@ def send_application_to_telegram(applicant, photo_urls=None):
     except Exception as e:
         print("❌ Telegram sendMessage exception:", e)
 
-    # 2) send up to 10 photos as a media group
     if photo_urls:
         group = [{"type": "photo", "media": u} for u in photo_urls[:10]]
         try:
@@ -275,82 +273,17 @@ def send_application_to_telegram(applicant, photo_urls=None):
                 print("❌ Telegram sendMediaGroup error:", r2.text)
         except Exception as e:
             print("❌ Telegram sendMediaGroup exception:", e)
+
 def set_state(chat_id, **fields):
     fields["updated_at"] = datetime.utcnow()
-    sessions.update_one(
+    sessions_coll.update_one(
         {"chat_id": chat_id},
         {"$set": fields, "$setOnInsert": {"chat_id": chat_id}},
         upsert=True,
     )
 
 def get_state(chat_id):
-    return sessions.find_one({"chat_id": chat_id}) or {}
-
-# -------- Knowledge (PDF -> chunks -> embeddings) --------
-EMBED_MODEL = "text-embedding-3-small"
-
-def _normalize_ws(s: str) -> str:
-    return re.sub(r"\s+", " ", s).strip()
-
-def chunk_text(text: str, max_tokens: int = 800) -> list[str]:
-    text = _normalize_ws(text)
-    max_chars = max_tokens * 4
-    chunks, start = [], 0
-    while start < len(text):
-        end = min(len(text), start + max_chars)
-        cut = text.rfind(". ", start, end)
-        if cut == -1 or cut < start + int(0.6 * max_chars):
-            cut = end
-        chunks.append(text[start:cut].strip())
-        start = cut
-    return [c for c in chunks if c]
-
-def get_embedding(text: str) -> list[float]:
-    emb = openai_client.embeddings.create(model=EMBED_MODEL, input=text)
-    return emb.data[0].embedding
-
-def upsert_pdf_chunks(file_bytes: bytes, lang: str):
-    reader = PdfReader(io.BytesIO(file_bytes))
-    full_text = ""
-    for page in reader.pages:
-        full_text += (page.extract_text() or "") + "\n"
-    chunks = chunk_text(full_text, max_tokens=800)
-
-    docs = []
-    for idx, ch in enumerate(chunks):
-        emb = get_embedding(ch)
-        docs.append({
-            "lang": lang,
-            "chunk_id": f"{lang}-{idx}",
-            "text": ch,
-            "embedding": emb,
-        })
-
-    knowledge_collection.delete_many({"lang": lang})
-    if docs:
-        knowledge_collection.insert_many(docs)
-    return len(docs)
-
-def search_knowledge(query: str, lang: str, k: int = 5) -> list[dict]:
-    q_emb = np.array(get_embedding(query))
-    scored = []
-    for doc in knowledge_collection.find({"lang": lang}):
-        if "embedding" not in doc:
-            continue
-        v = np.array(doc["embedding"])
-        sim = float(np.dot(q_emb, v) / (np.linalg.norm(q_emb) * np.linalg.norm(v) + 1e-9))
-        scored.append((sim, doc))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [d for _, d in scored[:k]]
-
-def build_context_for_intro(lang: str) -> str:
-    chunks = search_knowledge("overview, role, pay, onboarding, policies", top_k=6)
-    return "\n\n".join(chunks)
-
-def build_context_for_question(lang: str, question: str) -> str:
-    chunks = search_knowledge(question, top_k=6)
-    return "\n\n".join(chunks)
-# -------- end knowledge helpers --------
+    return sessions_coll.find_one({"chat_id": chat_id}) or {}
 
 # =========================
 # Settings (ONE source of truth)
@@ -365,7 +298,6 @@ def get_settings():
 
 @app.route("/api/settings", methods=["GET"])
 def api_get_settings():
-    # public GET so frontend can read for ThankYou page too
     return jsonify(get_settings()), 200
 
 @app.route("/api/settings", methods=["POST"])
@@ -418,13 +350,11 @@ def logout():
 def applications():
     if "user" not in session:
         return redirect(url_for("login"))
-    # server-side render (your HTML template will fetch /api/applications)
     raw_data = list(applications_collection.find({}, {"_id": 0}))
-    # add flag for template if needed
     for app_doc in raw_data:
         try:
             app_doc["country_flag"] = country_to_flag(app_doc.get("country"))
-        except:
+        except Exception:
             app_doc["country_flag"] = ""
     return render_template("applications.html", apps=raw_data)
 
@@ -445,7 +375,6 @@ def apply():
         photos = request.files.getlist("photos")
 
         geo = {}
-        # client-side geo fields (optional)
         client_ip = request.form.get("ip")
         client_city = request.form.get("geoCity")
         client_country = request.form.get("geoCountry")
@@ -461,11 +390,9 @@ def apply():
         if not all([name, age, email, contact, country]) or not photos:
             return jsonify({"message": "Missing required fields or photos."}), 400
 
-        # real IP (if behind CDN)
         ip_address = request.headers.get("CF-Connecting-IP") or \
                      request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0].strip()
 
-        # enrich IP geo
         try:
             res = requests.get(f"https://ipapi.co/{ip_address}/json/", timeout=10)
             if res.status_code == 200:
@@ -501,7 +428,6 @@ def apply():
         }
         applications_collection.insert_one(applicant_data)
 
-        # Notify admin on Telegram
         try:
             send_application_to_telegram(applicant_data, uploaded_urls)
         except Exception as e:
@@ -532,7 +458,7 @@ def api_applications():
     for app_doc in data:
         try:
             app_doc["country_flag"] = country_to_flag(app_doc.get("country"))
-        except:
+        except Exception:
             app_doc["country_flag"] = ""
     return jsonify(data), 200
 
@@ -673,7 +599,7 @@ def create_admin_user():
     return "✅ Admin created"
 
 # =========================
-# Knowledge upload (PDF)
+# Knowledge upload (admin PDF legacy button)
 # =========================
 @app.route("/admin/upload-pdf", methods=["POST"])
 def admin_upload_pdf():
@@ -682,32 +608,35 @@ def admin_upload_pdf():
     if "file" not in request.files:
         return jsonify({"error": "No file"}), 400
 
-    lang = request.form.get("lang", "English")
+    lang = request.form.get("lang", "English")   # kept for response compatibility
     f = request.files["file"]
     data = f.read()
+
+    # Index via the unified indexer
     try:
-        n = upsert_pdf_chunks(data, lang)
-        return jsonify({"status": "ok", "chunks": n, "lang": lang})
+        doc_id = f"adminpdf-{uuid.uuid4()}"
+        combined = ""
+        reader = PdfReader(io.BytesIO(data))
+        for page in reader.pages:
+            combined += (page.extract_text() or "") + "\n"
+        chunks = index_into_vector_store(doc_id=doc_id, name=f.filename, kind="pdf", text=combined)
+        # store meta for table
+        DOCS[doc_id] = {
+            "id": doc_id, "name": f.filename, "kind": "pdf",
+            "size": len(data), "chunks": chunks, "created_at": time.time()
+        }
+        return jsonify({"status": "ok", "chunks": chunks, "lang": lang})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Simple settings page template route (if you need it)
-@app.route("/settings", methods=["GET"])
-def settings_page():
-    if "user" not in session:
-        return redirect(url_for("login"))
-    return render_template("settings.html")
-
 # =========================
-# Telegram Webhook (FULL)
+# Telegram Webhook
 # =========================
 @app.route("/webhook", methods=["POST"])
 def telegram_webhook():
-    # --- tiny i18n helpers ---
     LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
 
     def t(lang, key):
-        # Fallback to English if missing
         D = {
             "welcome_choose_lang": {
                 "English":    "👋 Welcome! Please choose your preferred language:",
@@ -832,7 +761,6 @@ def telegram_webhook():
             "one_time_keyboard": True,
         }
 
-    # ---------- parse update ----------
     update = request.get_json(force=True, silent=True) or {}
     msg = update.get("message") or update.get("edited_message") or {}
     if not msg:
@@ -845,12 +773,12 @@ def telegram_webhook():
 
     text = (msg.get("text") or "").strip()
 
-    # ---------- respect admin toggle ----------
+    # respect admin toggle
     s_conf = get_settings()
     if not s_conf.get("webhook_enabled", True):
         return "ok", 200
 
-    # ---------- /start ----------
+    # /start
     if text.lower().startswith("/start"):
         set_state(chat_id, state="awaiting_language")
         tg_send_message(chat_id, t("English", "welcome_choose_lang"), reply_markup=kb_language())
@@ -860,34 +788,30 @@ def telegram_webhook():
     state = st.get("state")
     lang = st.get("language", "English")
 
-    # ---------- pick language ----------
+    # pick language
     if state == "awaiting_language":
         chosen = text.strip()
         if chosen not in LANGUAGES:
             tg_send_message(chat_id, t("English", "pick_lang_from_buttons"), reply_markup=kb_language())
             return "ok", 200
-
         set_state(chat_id, state="awaiting_email", language=chosen)
         tg_send_message(chat_id, t(chosen, "ask_email"))
         return "ok", 200
 
-    # ---------- email check → GPT intro ----------
+    # email check → GPT intro
     if state == "awaiting_email":
         email = text.strip().lower()
         applicant = applications_collection.find_one({"email": email})
-
         if not applicant:
             tg_send_message(chat_id, t(lang, "email_not_found"))
             return "ok", 200
 
-        # Save language + telegram id on applicant
         applications_collection.update_one(
             {"_id": applicant["_id"]},
             {"$set": {"telegram_id": chat_id, "language": lang}},
         )
 
-        # GPT intro in chosen language
-        context = build_context_for_intro(lang) or ""
+        context = build_context_for_intro() or ""
         prompt_user = (
             f"Speak in {lang}. Using ONLY the provided context, briefly explain the job, "
             f"benefits, pay cadence, and requirements in 120–180 words. Invite the applicant to ask questions.\n\n"
@@ -897,10 +821,8 @@ def telegram_webhook():
             gpt_response = openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a recruiter. Answer strictly from context. If something is missing, say you'll confirm with an admin.",
-                    },
+                    {"role": "system",
+                     "content": "You are a recruiter. Answer strictly from context. If something is missing, say you'll confirm with an admin."},
                     {"role": "user", "content": prompt_user},
                 ],
                 temperature=0.4,
@@ -915,17 +837,15 @@ def telegram_webhook():
         set_state(chat_id, state="job_intro", email=email)
         return "ok", 200
 
-    # ---------- Q&A with GPT until they press "I understand" ----------
+    # Q&A
     if state == "job_intro":
         if text == t(lang, "confirm_no_questions_btn"):
-            # Move to platform choice
             set_state(chat_id, state="awaiting_platform")
             tg_send_message(chat_id, t(lang, "ask_platform"), reply_markup=kb_platform(lang))
             return "ok", 200
 
-        # otherwise, treat as a question → GPT answer in chosen language
         user_q = text
-        context = build_context_for_question(lang, user_q) or ""
+        context = build_context_for_question(user_q) or ""
         qna_prompt = (
             f"Use the context to answer in {lang}, friendly and concise.\n"
             f"Question: {user_q}\n\n"
@@ -935,10 +855,7 @@ def telegram_webhook():
             gpt_answer = openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "Answer clearly using the provided context only.",
-                    },
+                    {"role": "system", "content": "Answer clearly using the provided context only."},
                     {"role": "user", "content": qna_prompt},
                 ],
                 temperature=0.5,
@@ -948,12 +865,11 @@ def telegram_webhook():
             print("OpenAI Q&A error:", e)
             answer = t(lang, "prompt_confirm_or_ask")
 
-        # keep showing the confirm button
         tg_send_message(chat_id, answer, parse_mode="Markdown")
         tg_send_message(chat_id, t(lang, "prompt_confirm_or_ask"), reply_markup=kb_confirm(lang))
         return "ok", 200
 
-    # ---------- choose platform → give links + ask app id ----------
+    # choose platform → links → ask app id
     if state == "awaiting_platform":
         lower = text.strip().lower()
         is_android = lower == t(lang, "android").lower()
@@ -970,7 +886,7 @@ def telegram_webhook():
         set_state(chat_id, state="awaiting_app_id")
         return "ok", 200
 
-    # ---------- receive app id → thank → notify admin ----------
+    # receive app id → thank → notify admin
     if state == "awaiting_app_id":
         app_id = text.strip()
         email = st.get("email")
@@ -983,7 +899,6 @@ def telegram_webhook():
         tg_send_message(chat_id, t(lang, "thanks_wait"))
         set_state(chat_id, state="waiting_approval")
 
-        # notify admin with summary + photos
         try:
             if ADMIN_CHAT_ID:
                 app_doc = applications_collection.find_one({"email": email}) if email else None
@@ -1012,7 +927,7 @@ def telegram_webhook():
 
         return "ok", 200
 
-    # ---------- admin fast-approval ----------
+    # admin fast-approval
     if ADMIN_CHAT_ID and chat_id == ADMIN_CHAT_ID:
         parts = text.strip().split()
         if len(parts) == 2 and parts[0].lower() in ["activated", "approve", "approved"]:
@@ -1033,12 +948,12 @@ def telegram_webhook():
             tg_send_message(ADMIN_CHAT_ID, f"✅ Activated {target_email}")
             return "ok", 200
 
-    # ---------- fallback ----------
     tg_send_message(chat_id, "Please type /start to begin.")
     return "ok", 200
 
 # =========================
-# Main
+# Debug
+# =========================
 @app.route("/debug/telegram-env")
 def debug_telegram_env():
     tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -1049,97 +964,112 @@ def debug_telegram_env():
         "token_masked": masked,
         "chat_id": chat,
     })
-#==========upload====
+
+# =========================
+# Knowledge upload/list/delete/search (JSON, JSONL, PDF)
+# =========================
 @app.route("/knowledge/health", methods=["GET"])
 def knowledge_health():
     return jsonify({"ok": True, "service": "knowledge"})
 
 @app.route("/knowledge/upload", methods=["POST"])
-def upload_knowledge():
+def knowledge_upload():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    filename = file.filename or "file"
+    ext = filename.rsplit(".", 1)[-1].lower()
+
+    if ext not in {"pdf", "json", "jsonl"}:
+        return jsonify({"error": f"Unsupported file type: {ext}"}), 400
+
+    raw = file.read()
+    doc_id = str(uuid.uuid4())
+    text_parts: list[str] = []
+
     try:
-        file = request.files.get("file")
-        if not file:
-            return jsonify({"error": "No file uploaded"}), 400
+        if ext == "pdf":
+            reader = PdfReader(io.BytesIO(raw))
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    text_parts.append(t.strip())
 
-        filename = file.filename
-        ext = os.path.splitext(filename)[1].lower()
-        save_path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(save_path)
+        elif ext == "json":
+            data = json.loads(raw.decode("utf-8", errors="ignore"))
+            if isinstance(data, list):
+                for entry in data:
+                    text_parts.append(json.dumps(entry, ensure_ascii=False))
+            elif isinstance(data, dict):
+                text_parts.append(json.dumps(data, ensure_ascii=False))
+            else:
+                text_parts.append(str(data))
 
-        text_chunks = []
-
-        # ===== PDF handling =====
-        if ext == ".pdf":
-            try:
-                reader = PdfReader(save_path)
-                for page in reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        text_chunks.append(text.strip())
-            except Exception as e:
-                return jsonify({"error": f"PDF parsing failed: {str(e)}"}), 500
-
-        # ===== JSON handling =====
-        elif ext == ".json":
-            try:
-                with open(save_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, list):
-                    for entry in data:
-                        text_chunks.append(json.dumps(entry, ensure_ascii=False))
-                elif isinstance(data, dict):
-                    text_chunks.append(json.dumps(data, ensure_ascii=False))
-            except Exception as e:
-                return jsonify({"error": f"JSON parsing failed: {str(e)}"}), 500
-
-        # ===== JSONL handling =====
-        elif ext == ".jsonl":
-            try:
-                with open(save_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if not line.strip():
-                            continue
-                        try:
-                            obj = json.loads(line.strip())
-                            text_chunks.append(json.dumps(obj, ensure_ascii=False))
-                        except json.JSONDecodeError:
-                            continue
-            except Exception as e:
-                return jsonify({"error": f"JSONL parsing failed: {str(e)}"}), 500
-
-        else:
-            return jsonify({"error": f"Unsupported file type: {ext}"}), 400
-
-        # ===== Store in vector DB / AI memory =====
-        # Replace this with your own indexing function
-        try:
-            index_into_vector_store(text_chunks)
-        except Exception as e:
-            return jsonify({"error": f"Indexing failed: {str(e)}"}), 500
-
-        return jsonify({
-            "ok": True,
-            "doc": {
-                "name": filename,
-                "kind": ext[1:],
-                "size": os.path.getsize(save_path)
-            }
-        })
+        elif ext == "jsonl":
+            for line in raw.decode("utf-8", errors="ignore").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line.strip())
+                    text_parts.append(json.dumps(obj, ensure_ascii=False))
+                except json.JSONDecodeError:
+                    continue
 
     except Exception as e:
-        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
-    
+        return jsonify({"error": f"Failed to parse {ext.upper()}: {str(e)}"}), 500
+
+    if not text_parts:
+        return jsonify({"error": "No text extracted from file"}), 400
+
+    try:
+        combined = "\n".join(text_parts)
+        chunks_indexed = index_into_vector_store(
+            doc_id=doc_id, name=filename, kind=ext, text=combined
+        )
+    except Exception as e:
+        return jsonify({"error": f"Indexing failed: {str(e)}"}), 500
+
+    DOCS[doc_id] = {
+        "id": doc_id,
+        "name": filename,
+        "kind": ext,
+        "size": len(raw),
+        "chunks": chunks_indexed,
+        "created_at": time.time()
+    }
+    return jsonify({"ok": True, "doc": DOCS[doc_id]})
+
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
-    # No language filtering; return everything
     return jsonify({"docs": list(DOCS.values())})
 
 @app.route("/knowledge/<doc_id>", methods=["DELETE"])
 def knowledge_delete(doc_id):
     if doc_id not in DOCS:
         return jsonify({"error": "Not found"}), 404
+    knowledge_collection.delete_many({"doc_id": doc_id})
     del DOCS[doc_id]
     return jsonify({"ok": True})
+
+@app.route("/knowledge/search", methods=["GET"])
+def knowledge_search():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"error": "q required"}), 400
+    qv = np.array(get_embedding(q))
+    items = list(knowledge_collection.find({}, {"_id": 0, "text": 1, "embedding": 1, "name": 1, "doc_id": 1}).limit(500))
+    scored = []
+    for it in items:
+        v = np.array(it["embedding"])
+        sim = float(np.dot(qv, v) / (np.linalg.norm(qv) * np.linalg.norm(v) + 1e-9))
+        scored.append((sim, it))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = [{"score": round(s, 4), "name": it["name"], "doc_id": it["doc_id"], "text": it["text"][:300]} for s, it in scored[:5]]
+    return jsonify({"results": top})
+
+# =========================
+# Main
 # =========================
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
