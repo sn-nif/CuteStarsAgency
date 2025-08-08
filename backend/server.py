@@ -10,7 +10,6 @@ import bcrypt
 from bson import ObjectId
 import pycountry
 import traceback
-from openai import OpenAI
 from pypdf import PdfReader
 import io
 import re
@@ -21,6 +20,9 @@ import json
 from datetime import datetime
 import time
 import uuid
+import fitz  # PyMuPDF
+from openai import OpenAI
+client_openai = OpenAI()
 #==================upload=====
 DOCS = {}  # doc_id -> metadata dict
 # =========================
