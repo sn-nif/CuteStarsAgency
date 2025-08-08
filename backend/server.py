@@ -635,10 +635,140 @@ def settings_page():
     return render_template("settings.html")
 
 # =========================
-# Telegram Webhook
+# Telegram Webhook (FULL)
 # =========================
 @app.route("/webhook", methods=["POST"])
 def telegram_webhook():
+    # --- tiny i18n helpers ---
+    LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
+
+    def t(lang, key):
+        # Fallback to English if missing
+        D = {
+            "welcome_choose_lang": {
+                "English":    "👋 Welcome! Please choose your preferred language:",
+                "Spanish":    "👋 ¡Bienvenido! Elige tu idioma preferido:",
+                "Portuguese": "👋 Bem-vindo! Escolha seu idioma preferido:",
+                "Russian":    "👋 Добро пожаловать! Пожалуйста, выберите предпочтительный язык:",
+                "Serbian":    "👋 Dobrodošli! Molimo izaberite svoj jezik:"
+            },
+            "pick_lang_from_buttons": {
+                "English":    "Please pick a language from the buttons.",
+                "Spanish":    "Por favor elige un idioma con los botones.",
+                "Portuguese": "Por favor escolha um idioma nos botões.",
+                "Russian":    "Пожалуйста, выберите язык с помощью кнопок.",
+                "Serbian":    "Molimo izaberite jezik pomoću dugmadi."
+            },
+            "ask_email": {
+                "English":    "📧 Please enter your email (same one you used in the application):",
+                "Spanish":    "📧 Por favor ingrese su correo (el mismo que usó en la solicitud):",
+                "Portuguese": "📧 Por favor insira seu e-mail (o mesmo usado na inscrição):",
+                "Russian":    "📧 Пожалуйста, введите вашу почту (ту же, что в заявке):",
+                "Serbian":    "📧 Molimo unesite svoj e-mail (isti kao u prijavi):"
+            },
+            "email_not_found": {
+                "English":    "❌ Sorry, we couldn’t find your application with that email. Please try again.",
+                "Spanish":    "❌ No pudimos encontrar su solicitud con ese correo electrónico. Inténtelo de nuevo.",
+                "Portuguese": "❌ Não encontramos sua inscrição com esse e-mail. Tente novamente.",
+                "Russian":    "❌ Не нашли вашу заявку с этим email. Попробуйте ещё раз.",
+                "Serbian":    "❌ Nismo pronašli vašu prijavu sa tom e-poštom. Pokušajte ponovo."
+            },
+            "generic_intro_fallback": {
+                "English":    "Here’s a quick overview of the role and process. Feel free to ask any questions!",
+                "Spanish":    "Aquí tienes un breve resumen del puesto y proceso. ¡No dudes en preguntar!",
+                "Portuguese": "Aqui está um breve resumo do cargo e do processo. Fique à vontade para perguntar!",
+                "Russian":    "Краткий обзор роли и процесса. Не стесняйтесь задавать вопросы!",
+                "Serbian":    "Evo kratkog pregleda uloge i procesa. Slobodno postavite pitanja!"
+            },
+            "confirm_no_questions_btn": {
+                "English":    "✅ I understand — no questions",
+                "Spanish":    "✅ Entiendo — sin preguntas",
+                "Portuguese": "✅ Entendi — sem dúvidas",
+                "Russian":    "✅ Понятно — вопросов нет",
+                "Serbian":    "✅ Razumem — bez pitanja"
+            },
+            "prompt_confirm_or_ask": {
+                "English":    "If you have no further questions, tap the button below to continue.",
+                "Spanish":    "Si no tiene más preguntas, toque el botón abajo para continuar.",
+                "Portuguese": "Se não tiver mais dúvidas, toque no botão abaixo para continuar.",
+                "Russian":    "Если вопросов больше нет, нажмите кнопку ниже, чтобы продолжить.",
+                "Serbian":    "Ako nemate više pitanja, pritisnite dugme ispod da nastavite."
+            },
+            "ask_platform": {
+                "English":    "📱 Which phone do you use?",
+                "Spanish":    "📱 ¿Qué teléfono usas?",
+                "Portuguese": "📱 Qual telefone você usa?",
+                "Russian":    "📱 Каким телефоном вы пользуетесь?",
+                "Serbian":    "📱 Koji telefon koristite?"
+            },
+            "android": {
+                "English": "Android", "Spanish": "Android", "Portuguese": "Android",
+                "Russian": "Android", "Serbian": "Android"
+            },
+            "ios": {
+                "English": "iOS", "Spanish": "iOS", "Portuguese": "iOS",
+                "Russian": "iOS", "Serbian": "iOS"
+            },
+            "choose_android_or_ios": {
+                "English":    "Please choose Android or iOS from the buttons.",
+                "Spanish":    "Por favor elija Android o iOS con los botones.",
+                "Portuguese": "Por favor escolha Android ou iOS nos botões.",
+                "Russian":    "Пожалуйста, выберите Android или iOS с помощью кнопок.",
+                "Serbian":    "Molimo izaberite Android ili iOS pomoću dugmadi."
+            },
+            "download_link": {
+                "English":    "⬇️ Download the app:\n{link}",
+                "Spanish":    "⬇️ Descarga la app:\n{link}",
+                "Portuguese": "⬇️ Baixe o app:\n{link}",
+                "Russian":    "⬇️ Скачайте приложение:\n{link}",
+                "Serbian":    "⬇️ Preuzmite aplikaciju:\n{link}"
+            },
+            "signup_video": {
+                "English":    "🎬 Sign-up guide:\n{video}",
+                "Spanish":    "🎬 Guía de registro:\n{video}",
+                "Portuguese": "🎬 Guia de cadastro:\n{video}",
+                "Russian":    "🎬 Видеогид по регистрации:\n{video}",
+                "Serbian":    "🎬 Vodič za registraciju:\n{video}"
+            },
+            "ask_app_id": {
+                "English":    "Please send your *Application ID* now.",
+                "Spanish":    "Por favor envíe su *ID de solicitud* ahora.",
+                "Portuguese": "Por favor envie seu *ID de inscrição* agora.",
+                "Russian":    "Пожалуйста, отправьте сейчас ваш *ID заявки*.",
+                "Serbian":    "Molimo pošaljite sada svoj *ID prijave*."
+            },
+            "thanks_wait": {
+                "English":    "✅ Received. Your account will be reviewed. Activation usually takes 1–2 working days.",
+                "Spanish":    "✅ Recibido. Revisaremos su cuenta. La activación suele tardar 1–2 días hábiles.",
+                "Portuguese": "✅ Recebido. Sua conta será analisada. A ativação leva 1–2 dias úteis.",
+                "Russian":    "✅ Получено. Ваша учетная запись будет рассмотрена. Обычно активация занимает 1–2 рабочих дня.",
+                "Serbian":    "✅ Primljeno. Vaš nalog će biti pregledan. Aktivacija obično traje 1–2 radna dana."
+            },
+        }
+        return D.get(key, {}).get(lang, D.get(key, {}).get("English", ""))
+
+    def kb_language():
+        return {
+            "keyboard": [[{"text": l}] for l in LANGUAGES],
+            "resize_keyboard": True,
+            "one_time_keyboard": True,
+        }
+
+    def kb_confirm(lang):
+        return {
+            "keyboard": [[{"text": t(lang, "confirm_no_questions_btn")}]],
+            "resize_keyboard": True,
+            "one_time_keyboard": False,
+        }
+
+    def kb_platform(lang):
+        return {
+            "keyboard": [[{"text": t(lang, "android")}], [{"text": t(lang, "ios")}]],
+            "resize_keyboard": True,
+            "one_time_keyboard": True,
+        }
+
+    # ---------- parse update ----------
     update = request.get_json(force=True, silent=True) or {}
     msg = update.get("message") or update.get("edited_message") or {}
     if not msg:
@@ -651,71 +781,54 @@ def telegram_webhook():
 
     text = (msg.get("text") or "").strip()
 
-    # ✅ Respect admin toggle: if webhook is off, ignore all updates
-    s = get_settings()
-    if not s.get("webhook_enabled", True):
+    # ---------- respect admin toggle ----------
+    s_conf = get_settings()
+    if not s_conf.get("webhook_enabled", True):
         return "ok", 200
 
-    # /start → ask for language
+    # ---------- /start ----------
     if text.lower().startswith("/start"):
         set_state(chat_id, state="awaiting_language")
-        keyboard = {
-            "keyboard": [[{"text": lang}] for lang in LANGUAGES],
-            "resize_keyboard": True,
-            "one_time_keyboard": True,
-        }
-        tg_send_message(
-            chat_id,
-            "👋 Welcome! Please choose your preferred language:",
-            reply_markup=keyboard,
-        )
+        tg_send_message(chat_id, t("English", "welcome_choose_lang"), reply_markup=kb_language())
         return "ok", 200
 
     st = get_state(chat_id)
     state = st.get("state")
+    lang = st.get("language", "English")
 
-    # language → ask for email
+    # ---------- pick language ----------
     if state == "awaiting_language":
-        language = text.strip()
-        if language not in LANGUAGES:
-            tg_send_message(chat_id, "Please pick a language from the buttons.")
+        chosen = text.strip()
+        if chosen not in LANGUAGES:
+            tg_send_message(chat_id, t("English", "pick_lang_from_buttons"), reply_markup=kb_language())
             return "ok", 200
 
-        set_state(chat_id, state="awaiting_email", language=language)
-        tg_send_message(
-            chat_id,
-            "📧 Please enter your email (same one you used in the application):",
-        )
+        set_state(chat_id, state="awaiting_email", language=chosen)
+        tg_send_message(chat_id, t(chosen, "ask_email"))
         return "ok", 200
 
-    # email → verify + save → GPT job intro (with knowledge)
+    # ---------- email check → GPT intro ----------
     if state == "awaiting_email":
         email = text.strip().lower()
         applicant = applications_collection.find_one({"email": email})
 
         if not applicant:
-            tg_send_message(
-                chat_id,
-                "❌ Sorry, we couldn’t find your application with that email. Please try again.",
-            )
+            tg_send_message(chat_id, t(lang, "email_not_found"))
             return "ok", 200
 
+        # Save language + telegram id on applicant
         applications_collection.update_one(
             {"_id": applicant["_id"]},
-            {"$set": {"telegram_id": chat_id, "language": st.get("language")}},
+            {"$set": {"telegram_id": chat_id, "language": lang}},
         )
 
-        chosen_lang = st.get("language", "English")
-        context = build_context_for_intro(chosen_lang)
-        if not context:
-            context = "No uploaded knowledge yet. Provide a short generic overview."
-
+        # GPT intro in chosen language
+        context = build_context_for_intro(lang) or ""
         prompt_user = (
-            f"Speak in {chosen_lang}. Using ONLY the provided context, briefly explain the job, "
+            f"Speak in {lang}. Using ONLY the provided context, briefly explain the job, "
             f"benefits, pay cadence, and requirements in 120–180 words. Invite the applicant to ask questions.\n\n"
             f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
         )
-
         try:
             gpt_response = openai_client.chat.completions.create(
                 model="gpt-4o",
@@ -731,49 +844,36 @@ def telegram_webhook():
             intro_text = gpt_response.choices[0].message.content
         except Exception as e:
             print("OpenAI intro error:", e)
-            intro_text = (
-                "Here’s a quick overview of the role and process. (Context not available right now.) "
-                "Feel free to ask any questions!"
-            )
+            intro_text = t(lang, "generic_intro_fallback")
 
         tg_send_message(chat_id, intro_text)
+        tg_send_message(chat_id, t(lang, "prompt_confirm_or_ask"), reply_markup=kb_confirm(lang))
         set_state(chat_id, state="job_intro", email=email)
         return "ok", 200
 
-    # continuous Q&A with GPT (with knowledge) until they accept
+    # ---------- Q&A with GPT until they press "I understand" ----------
     if state == "job_intro":
-        user_msg = text.strip()
-
-        # accept → terms
-        if user_msg.lower() in {"accept", "i accept", "yes"}:
-            set_state(chat_id, state="awaiting_terms")
-            tg_send_message(
-                chat_id,
-                "📜 Great! Please confirm you accept our terms of service and privacy policy. "
-                "Reply with *I accept* to continue.",
-                parse_mode="Markdown",
-            )
+        if text == t(lang, "confirm_no_questions_btn"):
+            # Move to platform choice
+            set_state(chat_id, state="awaiting_platform")
+            tg_send_message(chat_id, t(lang, "ask_platform"), reply_markup=kb_platform(lang))
             return "ok", 200
 
-        # Otherwise answer with GPT using knowledge
-        chosen_lang = st.get("language", "English")
-        context = build_context_for_question(chosen_lang, user_msg)
-        if not context:
-            context = "No relevant context segments found."
-
+        # otherwise, treat as a question → GPT answer in chosen language
+        user_q = text
+        context = build_context_for_question(lang, user_q) or ""
         qna_prompt = (
-            f"Use the context to answer in {chosen_lang}, friendly and concise.\n"
-            f"Question: {user_msg}\n\n"
+            f"Use the context to answer in {lang}, friendly and concise.\n"
+            f"Question: {user_q}\n\n"
             f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
         )
-
         try:
             gpt_answer = openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
-                        "content": "You answer applicant questions about the job clearly using the provided context only.",
+                        "content": "Answer clearly using the provided context only.",
                     },
                     {"role": "user", "content": qna_prompt},
                 ],
@@ -782,65 +882,44 @@ def telegram_webhook():
             answer = gpt_answer.choices[0].message.content
         except Exception as e:
             print("OpenAI Q&A error:", e)
-            answer = "Thanks for the question! If you’re ready, type *I accept* to proceed."
+            answer = t(lang, "prompt_confirm_or_ask")
+
+        # keep showing the confirm button
         tg_send_message(chat_id, answer, parse_mode="Markdown")
+        tg_send_message(chat_id, t(lang, "prompt_confirm_or_ask"), reply_markup=kb_confirm(lang))
         return "ok", 200
 
-    # TERMS → Q&A prompt
-    if state == "awaiting_terms":
-        if text.strip().lower() not in ["i accept", "accept", "yes"]:
-            tg_send_message(chat_id, "Please type *I accept* to continue.", parse_mode="Markdown")
-            return "ok", 200
-        set_state(chat_id, state="qna_or_skip")
-        tg_send_message(
-            chat_id,
-            "❓ Do you have any questions? Send them now, or type *skip*.",
-            parse_mode="Markdown",
-        )
-        return "ok", 200
-
-    # Optional Q&A → Platform
-    if state == "qna_or_skip":
-        if text.strip().lower() != "skip":
-            tg_send_message(chat_id, "Thanks! Our team will reply if needed. Type *skip* to continue.")
-            return "ok", 200
-        keyboard = {
-            "keyboard": [[{"text": "Android"}], [{"text": "iOS"}]],
-            "resize_keyboard": True,
-            "one_time_keyboard": True,
-        }
-        set_state(chat_id, state="awaiting_platform")
-        tg_send_message(chat_id, "📱 Which phone do you use? (Android or iOS)", reply_markup=keyboard)
-        return "ok", 200
-
-    # Platform → send links + video → ask App ID
+    # ---------- choose platform → give links + ask app id ----------
     if state == "awaiting_platform":
-        choice = text.strip().lower()
-        if choice not in ["android", "ios"]:
-            tg_send_message(chat_id, "Please choose *Android* or *iOS* from the buttons.", parse_mode="Markdown")
+        lower = text.strip().lower()
+        is_android = lower == t(lang, "android").lower()
+        is_ios     = lower == t(lang, "ios").lower()
+
+        if not (is_android or is_ios):
+            tg_send_message(chat_id, t(lang, "choose_android_or_ios"), reply_markup=kb_platform(lang))
             return "ok", 200
-        link = APP_URL_ANDROID if choice == "android" else APP_URL_IOS
-        tg_send_message(chat_id, f"⬇️ Download the app:\n{link}")
-        tg_send_message(chat_id, f"🎬 Sign-up guide:\n{SIGNUP_VIDEO}")
+
+        link = APP_URL_ANDROID if is_android else APP_URL_IOS
+        tg_send_message(chat_id, t(lang, "download_link").format(link=link))
+        tg_send_message(chat_id, t(lang, "signup_video").format(video=SIGNUP_VIDEO))
+        tg_send_message(chat_id, t(lang, "ask_app_id"), parse_mode="Markdown")
         set_state(chat_id, state="awaiting_app_id")
-        tg_send_message(chat_id, "Please send your *Application ID* now.", parse_mode="Markdown")
         return "ok", 200
 
-    # Save App ID → waiting msg → notify admin
+    # ---------- receive app id → thank → notify admin ----------
     if state == "awaiting_app_id":
         app_id = text.strip()
         email = st.get("email")
-
         if email:
             applications_collection.update_one(
                 {"email": email},
                 {"$set": {"application_id": app_id}},
             )
 
+        tg_send_message(chat_id, t(lang, "thanks_wait"))
         set_state(chat_id, state="waiting_approval")
-        tg_send_message(chat_id, "✅ Received. Please wait 1–2 working days for approval.")
 
-        # Notify admin with summary + photos
+        # notify admin with summary + photos
         try:
             if ADMIN_CHAT_ID:
                 app_doc = applications_collection.find_one({"email": email}) if email else None
@@ -853,10 +932,9 @@ def telegram_webhook():
                         f"• Country: {app_doc.get('country')}\n"
                         f"• Phone: +{app_doc.get('contact')}\n"
                         f"• Telegram ID: {chat_id}\n"
-                        f"Reply with:  *activated {app_doc.get('email')}*  to approve."
+                        f"Reply:  *activated {app_doc.get('email')}*"
                     )
                     tg_send_message(ADMIN_CHAT_ID, summary, parse_mode="Markdown")
-
                     photos = (app_doc.get("photos") or [])[:10]
                     if photos:
                         media_group = [{"type": "photo", "media": u} for u in photos]
@@ -870,7 +948,7 @@ def telegram_webhook():
 
         return "ok", 200
 
-    # Admin fast-approval (message like: "activated user@example.com")
+    # ---------- admin fast-approval ----------
     if ADMIN_CHAT_ID and chat_id == ADMIN_CHAT_ID:
         parts = text.strip().split()
         if len(parts) == 2 and parts[0].lower() in ["activated", "approve", "approved"]:
@@ -891,7 +969,7 @@ def telegram_webhook():
             tg_send_message(ADMIN_CHAT_ID, f"✅ Activated {target_email}")
             return "ok", 200
 
-    # fallback
+    # ---------- fallback ----------
     tg_send_message(chat_id, "Please type /start to begin.")
     return "ok", 200
 
