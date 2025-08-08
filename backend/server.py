@@ -23,7 +23,12 @@ import uuid
 import fitz  # PyMuPDF
 from openai import OpenAI
 client_openai = OpenAI()
+from PyPDF2 import PdfReader
 #==================upload=====
+# Make sure your uploads folder exists
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+#==========
 DOCS = {}  # doc_id -> metadata dict
 # =========================
 # Boot / Config
@@ -1050,124 +1055,79 @@ def knowledge_health():
     return jsonify({"ok": True, "service": "knowledge"})
 
 @app.route("/knowledge/upload", methods=["POST"])
-def knowledge_upload():
-    if "file" not in request.files:
-        return jsonify({"ok": False, "error": "No file uploaded"}), 400
+def upload_knowledge():
+    try:
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
 
-    f = request.files["file"]
-    name = f.filename or "file"
-    ext = name.rsplit(".", 1)[-1].lower()
-    raw = f.read()
+        filename = file.filename
+        ext = os.path.splitext(filename)[1].lower()
+        save_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(save_path)
 
-    # ---- parse to raw texts ----
-    texts = []
+        text_chunks = []
 
-    if ext == "pdf":
-        # TODO: swap in your real PDF extractor if you have one
-        try:
-            from pypdf import PdfReader
-            import io
-            r = PdfReader(io.BytesIO(raw))
-            full = "\n".join((p.extract_text() or "") for p in r.pages)
-            if full.strip():
-                texts = [full]
-        except Exception as e:
-            return jsonify({"ok": False, "error": f"PDF parse error: {e}"}), 400
-
-    elif ext == "json":
-        s = raw.decode("utf-8", errors="ignore")
-        try:
-            data = json.loads(s)
-        except Exception:
-            return jsonify({"ok": False, "error": "Invalid JSON"}), 400
-        def walk(x):
-            if isinstance(x, dict):  return "\n".join(f"{k}: {walk(v)}" for k,v in x.items())
-            if isinstance(x, list):  return "\n".join(walk(v) for v in x)
-            return str(x)
-        flat = walk(data).strip()
-        if flat:
-            texts = [flat]
-
-    elif ext == "jsonl":
-        preferred = ("text","content","message","body","data")
-        for line in raw.splitlines():
-            s = line.decode("utf-8", errors="ignore").strip()
-            if not s:
-                continue
+        # ===== PDF handling =====
+        if ext == ".pdf":
             try:
-                obj = json.loads(s)
-            except Exception:
-                continue
-            if isinstance(obj, str) and obj.strip():
-                texts.append(obj.strip())
-            elif isinstance(obj, dict):
-                val = None
-                for k in preferred:
-                    if k in obj and isinstance(obj[k], str) and obj[k].strip():
-                        val = obj[k].strip()
-                        break
-                if val:
-                    texts.append(val)
-                else:
-                    # soft fallback: stringify simple scalars
-                    texts.append("\n".join(f"{k}: {obj[k]}" for k in obj if isinstance(obj[k], (str,int,float))))
-            elif isinstance(obj, list):
-                texts.extend([x.strip() for x in obj if isinstance(x, str) and x.strip()])
+                reader = PdfReader(save_path)
+                for page in reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        text_chunks.append(text.strip())
+            except Exception as e:
+                return jsonify({"error": f"PDF parsing failed: {str(e)}"}), 500
 
-    else:
-        return jsonify({"ok": False, "error": "Only .pdf, .json, .jsonl allowed"}), 400
+        # ===== JSON handling =====
+        elif ext == ".json":
+            try:
+                with open(save_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    for entry in data:
+                        text_chunks.append(json.dumps(entry, ensure_ascii=False))
+                elif isinstance(data, dict):
+                    text_chunks.append(json.dumps(data, ensure_ascii=False))
+            except Exception as e:
+                return jsonify({"error": f"JSON parsing failed: {str(e)}"}), 500
 
-    if not any(t.strip() for t in texts):
-        return jsonify({"ok": False, "error": "No text to index"}), 400
+        # ===== JSONL handling =====
+        elif ext == ".jsonl":
+            try:
+                with open(save_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        try:
+                            obj = json.loads(line.strip())
+                            text_chunks.append(json.dumps(obj, ensure_ascii=False))
+                        except json.JSONDecodeError:
+                            continue
+            except Exception as e:
+                return jsonify({"error": f"JSONL parsing failed: {str(e)}"}), 500
 
-    # ---- split & embed ----
-    def split_text(txt: str, max_chars=3200, overlap=400):
-        txt = re.sub(r"\s+", " ", txt).strip()
-        out, i = [], 0
-        n = len(txt)
-        while i < n:
-            j = min(n, i + max_chars)
-            cut = txt.rfind(". ", i, j)
-            if cut < i + int(max_chars*0.6):
-                cut = j
-            out.append(txt[i:cut].strip())
-            i = max(cut - overlap, cut)
-        return [c for c in out if c]
+        else:
+            return jsonify({"error": f"Unsupported file type: {ext}"}), 400
 
-    chunks = []
-    for t in texts:
-        chunks.extend(split_text(t))
+        # ===== Store in vector DB / AI memory =====
+        # Replace this with your own indexing function
+        try:
+            index_into_vector_store(text_chunks)
+        except Exception as e:
+            return jsonify({"error": f"Indexing failed: {str(e)}"}), 500
 
-    if not chunks:
-        return jsonify({"ok": False, "error": "No chunks"}), 400
+        return jsonify({
+            "ok": True,
+            "doc": {
+                "name": filename,
+                "kind": ext[1:],
+                "size": os.path.getsize(save_path)
+            }
+        })
 
-    EMB_MODEL = "text-embedding-3-small"
-    BATCH = 100
-    embeddings = []
-    for i in range(0, len(chunks), BATCH):
-        batch = chunks[i:i+BATCH]
-        resp = openai_client.embeddings.create(model=EMB_MODEL, input=batch)
-        embeddings.extend([d.embedding for d in resp.data])
-
-    items = [{"text": c, "embedding": e} for c, e in zip(chunks, embeddings)]
-    ins = knowledge_collection.insert_one({
-        "name": name,
-        "kind": ext,
-        "size": len(raw),
-        "created_at": datetime.utcnow(),
-        "chunks": items
-    })
-
-    return jsonify({
-        "ok": True,
-        "doc": {
-            "id": str(ins.inserted_id),
-            "name": name,
-            "kind": ext,
-            "size": len(raw),
-            "chunks_indexed": len(items)
-        }
-    }), 200
+    except Exception as e:
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
     
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
