@@ -120,18 +120,26 @@
 
       <!-- 📚 Bot Knowledge (Upload ) -->
       <hr style="margin: 30px 0; border: 1px solid #333;" />
-      <h2 style="color: gold;">📚 Bot Knowledge (Upload PDF)</h2>
-      <form id="pdfForm" enctype="multipart/form-data" style="margin-top:10px;">
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <label style="min-width:120px;">Language</label>
-          
-        </div>
-        <div style="margin-top:10px;">
-          <input id="file" type="file" accept=".pdf,.json">
-        </div>
-        <button type="submit" style="margin-top:12px;">Upload & Index PDF</button>
-        <div id="pdfMsg" style="margin-top:8px; color:#bbb;"></div>
-      </form>
+      <h2 style="color: gold;">📚 Bot Knowledge</h2>
+        <form id="kbForm" enctype="multipart/form-data" style="margin-top:10px;">
+          <div style="margin-top:10px;">
+            <input id="kbFile" type="file" accept=".pdf,.json,.jsonl">
+          </div>
+          <button type="submit" style="margin-top:12px;">Upload & Index</button>
+          <div id="kbMsg" style="margin-top:8px; color:#bbb;"></div>
+        </form>
+        
+        <table style="margin-top:20px; width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="color:gold; text-align:left;">Name</th>
+              <th style="color:gold; text-align:left;">Type</th>
+              <th style="color:gold; text-align:left;">Size (bytes)</th>
+              <th style="color:gold; text-align:left;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="kbList"></tbody>
+        </table>
     </div>
   </div>
 
@@ -294,7 +302,78 @@
         }catch(err){ msg.style.color="#ff6b6b"; msg.textContent="❌ "+err.message; }
       });
     }
+// === Bot Knowledge upload/list/delete ===
+async function loadKnowledge() {
+  try {
+    const res = await fetch("/knowledge", { credentials: "include" });
+    const data = await res.json();
+    const tbody = document.getElementById("kbList");
+    tbody.innerHTML = "";
+    (data.docs || []).forEach(doc => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${doc.name}</td>
+        <td>${doc.kind?.toUpperCase() || ""}</td>
+        <td>${doc.size}</td>
+        <td><button onclick="deleteKnowledge('${doc.id}')">Delete</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
 
+async function deleteKnowledge(id) {
+  if (!confirm("Delete this document?")) return;
+  const res = await fetch(`/knowledge/${id}`, { method: "DELETE" });
+  const data = await res.json();
+  if (res.ok && data.ok) {
+    loadKnowledge();
+  } else {
+    alert(data.error || "Delete failed");
+  }
+}
+
+document.getElementById("kbForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const msg = document.getElementById("kbMsg");
+  msg.style.color = "#bbb";
+  msg.textContent = "Uploading & indexing…";
+
+  const file = document.getElementById("kbFile").files[0];
+  if (!file) {
+    msg.textContent = "Please choose a file";
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  try {
+    const res = await fetch("/knowledge/upload", { method: "POST", body: fd, credentials: "include" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Upload failed");
+    msg.style.color = "#9BE37A";
+    msg.textContent = `✅ Uploaded ${data.doc.name}`;
+    document.getElementById("kbForm").reset();
+    loadKnowledge();
+  } catch (err) {
+    msg.style.color = "#ff6b6b";
+    msg.textContent = "❌ " + err.message;
+  }
+});
+
+// Load knowledge list when settings tab is opened
+settingsTab.onclick = () => {
+  applicationsSection.style.display="none";
+  settingsSection.style.display="block";
+  settingsTab.classList.add("active");
+  applicationsTab.classList.remove("active");
+  loadUsers();
+  loadSettings();
+  loadKnowledge(); // added here
+};
     // Settings load/save
     async function loadSettings() {
       try {
