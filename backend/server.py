@@ -33,7 +33,36 @@ from flask_cors import CORS
 import os
 
 app = Flask(__name__)
+# ========start of test======================
+@app.route("/debug/test-notify")
+def debug_test_notify():
+    try:
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if not token or not chat_id:
+            return jsonify({"status": "error", "error": "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID"}), 500
 
+        text = "🧪 Debug: direct sendMessage test from server"
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=15,
+        )
+        try:
+            jr = r.json()
+        except Exception:
+            jr = {"raw": r.text}
+
+        return jsonify({
+            "status": "ok" if r.status_code == 200 and jr.get("ok") else "api_error",
+            "http_status": r.status_code,
+            "telegram_response": jr
+        }), (200 if r.status_code == 200 else 500)
+
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+#===============end of test=========================
+    
 # Allow only your frontend domains & send cookies/sessions
 CORS(app, supports_credentials=True, resources={
     r"/*": {  # apply to all routes
@@ -799,28 +828,7 @@ def debug_telegram_env():
         "token_masked": masked,
         "chat_id": chat,
     })
-@app.route("/debug/test-notify")
-def debug_test_notify():
-    try:
-        send_application_to_telegram({
-            "name": "Debug User",
-            "age": "25",
-            "email": "debug@example.com",
-            "contact": "123456",
-            "country": "Spain",
-            "instagram": "",
-            "tiktok": "",
-            "telegram": "",
-            "ip": "1.2.3.4",
-            "ip_city": "Madrid",
-            "ip_region": "Madrid",
-            "ip_country": "Spain",
-            "geo_latitude": "",
-            "geo_longitude": "",
-        }, photo_files=[])
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+
 # =========================
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
