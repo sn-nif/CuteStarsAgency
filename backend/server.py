@@ -40,33 +40,19 @@ import os
 app = Flask(__name__)
 
 # ========start of test======================
-@app.route("/debug/test-notify")
-def debug_test_notify():
-    try:
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-        if not token or not chat_id:
-            return jsonify({"status": "error", "error": "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID"}), 500
+# session + size limits + same-site cookie for cross-origin admin access
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB limit (adjust as needed)
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True  # required when SAMESITE=None on HTTPS
+#===========
+from flask import jsonify, request, session
 
-        text = "🧪 Debug: direct sendMessage test from server"
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=15,
-        )
-        try:
-            jr = r.json()
-        except Exception:
-            jr = {"raw": r.text}
-
-        return jsonify({
-            "status": "ok" if r.status_code == 200 and jr.get("ok") else "api_error",
-            "http_status": r.status_code,
-            "telegram_response": jr
-        }), (200 if r.status_code == 200 else 500)
-
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+@app.before_request
+def guard_knowledge_routes():
+    # Only protect write actions under /knowledge; list/health can be public
+    if request.path.startswith("/knowledge") and request.method in {"POST", "DELETE"}:
+        if "user" not in session:
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
 #===============end of test=========================
     
 # Allow only your frontend domains & send cookies/sessions
@@ -1073,54 +1059,97 @@ def knowledge_upload():
     ext = name.rsplit(".", 1)[-1].lower()
     raw = f.read()
 
-    # ---- Extract raw texts (list[str]) depending on type ----
-    texts: list[str] = []
+    # ---- parse to raw texts ----
+    texts = []
 
     if ext == "pdf":
-        full_text = extract_pdf_text(raw)
-        if full_text.strip():
-            texts = [full_text]
+        # TODO: swap in your real PDF extractor if you have one
+        try:
+            from pypdf import PdfReader
+            import io
+            r = PdfReader(io.BytesIO(raw))
+            full = "\n".join((p.extract_text() or "") for p in r.pages)
+            if full.strip():
+                texts = [full]
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"PDF parse error: {e}"}), 400
+
     elif ext == "json":
-        # You already had extract_json_text; keep it if you prefer.
         s = raw.decode("utf-8", errors="ignore")
         try:
-            obj = json.loads(s)
+            data = json.loads(s)
         except Exception:
             return jsonify({"ok": False, "error": "Invalid JSON"}), 400
-        # flatten JSON into one big string
         def walk(x):
             if isinstance(x, dict):  return "\n".join(f"{k}: {walk(v)}" for k,v in x.items())
             if isinstance(x, list):  return "\n".join(walk(v) for v in x)
             return str(x)
-        flat = walk(obj)
-        if flat.strip():
+        flat = walk(data).strip()
+        if flat:
             texts = [flat]
+
     elif ext == "jsonl":
-        texts = extract_jsonl_texts(raw)
-        if not texts:
-            return jsonify({"ok": False, "error": "No usable lines in JSONL"}), 400
+        preferred = ("text","content","message","body","data")
+        for line in raw.splitlines():
+            s = line.decode("utf-8", errors="ignore").strip()
+            if not s:
+                continue
+            try:
+                obj = json.loads(s)
+            except Exception:
+                continue
+            if isinstance(obj, str) and obj.strip():
+                texts.append(obj.strip())
+            elif isinstance(obj, dict):
+                val = None
+                for k in preferred:
+                    if k in obj and isinstance(obj[k], str) and obj[k].strip():
+                        val = obj[k].strip()
+                        break
+                if val:
+                    texts.append(val)
+                else:
+                    # soft fallback: stringify simple scalars
+                    texts.append("\n".join(f"{k}: {obj[k]}" for k in obj if isinstance(obj[k], (str,int,float))))
+            elif isinstance(obj, list):
+                texts.extend([x.strip() for x in obj if isinstance(x, str) and x.strip()])
+
     else:
         return jsonify({"ok": False, "error": "Only .pdf, .json, .jsonl allowed"}), 400
 
-    # ---- Split each text into chunks (overlap for better recall) ----
-    chunks: list[str] = []
-    for t in texts:
-        chunks.extend(split_text(t, max_chars=3200, overlap=400))
-    chunks = [c for c in chunks if c.strip()]
-    if not chunks:
+    if not any(t.strip() for t in texts):
         return jsonify({"ok": False, "error": "No text to index"}), 400
 
-    # ---- Embed in batches to avoid request limits ----
-    EMB_MODEL = "text-embedding-3-small"  # multilingual
+    # ---- split & embed ----
+    def split_text(txt: str, max_chars=3200, overlap=400):
+        txt = re.sub(r"\s+", " ", txt).strip()
+        out, i = [], 0
+        n = len(txt)
+        while i < n:
+            j = min(n, i + max_chars)
+            cut = txt.rfind(". ", i, j)
+            if cut < i + int(max_chars*0.6):
+                cut = j
+            out.append(txt[i:cut].strip())
+            i = max(cut - overlap, cut)
+        return [c for c in out if c]
+
+    chunks = []
+    for t in texts:
+        chunks.extend(split_text(t))
+
+    if not chunks:
+        return jsonify({"ok": False, "error": "No chunks"}), 400
+
+    EMB_MODEL = "text-embedding-3-small"
     BATCH = 100
     embeddings = []
     for i in range(0, len(chunks), BATCH):
         batch = chunks[i:i+BATCH]
-        resp = client_openai.embeddings.create(model=EMB_MODEL, input=batch)
+        resp = openai_client.embeddings.create(model=EMB_MODEL, input=batch)
         embeddings.extend([d.embedding for d in resp.data])
 
-    # ---- Build chunk records and store ----
-    items = [{"text": ch, "embedding": emb} for ch, emb in zip(chunks, embeddings)]
+    items = [{"text": c, "embedding": e} for c, e in zip(chunks, embeddings)]
     ins = knowledge_collection.insert_one({
         "name": name,
         "kind": ext,
@@ -1128,6 +1157,7 @@ def knowledge_upload():
         "created_at": datetime.utcnow(),
         "chunks": items
     })
+
     return jsonify({
         "ok": True,
         "doc": {
@@ -1137,7 +1167,7 @@ def knowledge_upload():
             "size": len(raw),
             "chunks_indexed": len(items)
         }
-    })
+    }), 200
     
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
