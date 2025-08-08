@@ -1,26 +1,29 @@
 import React, { useEffect, useState } from "react";
 import { CheckCircle } from "lucide-react";
 
+const BACKEND =
+  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_BACKEND_URL) ||
+  process.env.REACT_APP_BACKEND_URL ||
+  ""; // fallback to same-origin if you proxy in dev
+
 const ThankYou = () => {
   const [botUrl, setBotUrl] = useState("#");
 
   useEffect(() => {
-    const fetchSettings = async () => {
+    const loadLink = async () => {
       try {
-        const res = await fetch("/api/settings", { credentials: "include" });
-        if (!res.ok) throw new Error("Failed to load settings");
-        const s = await res.json();
-        if (s.webhook_enabled) {
-          setBotUrl(s.bot_main_url || "https://t.me/AiSiva_bot");
-        } else {
-          setBotUrl(s.bot_alt_url || "https://t.me/AlternateBot");
-        }
+        const res = await fetch(`${BACKEND}/public/bot-link`, {
+          // no credentials needed; it’s a public route
+        });
+        if (!res.ok) throw new Error("Failed to load bot link");
+        const { url } = await res.json();
+        setBotUrl(url || "https://t.me/AiSiva_bot");
       } catch (err) {
-        console.error("Settings fetch failed:", err);
-        setBotUrl("https://t.me/AiSiva_bot"); // fallback
+        console.error("Bot link fetch failed:", err);
+        setBotUrl("https://t.me/AiSiva_bot"); // hard fallback
       }
     };
-    fetchSettings();
+    loadLink();
   }, []);
 
   return (
