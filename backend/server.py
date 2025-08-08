@@ -19,10 +19,8 @@ import mimetypes
 import uuid
 import json
 from datetime import datetime
-from knowledge import router as knowledge_router
-import json, uuid, time
-from flask import request, jsonify
-
+import time
+import uuid
 #==================upload=====
 DOCS = {}  # doc_id -> metadata dict
 # =========================
@@ -38,8 +36,7 @@ from flask_cors import CORS
 import os
 
 app = Flask(__name__)
-from flask_cors import CORS
-CORS(app, resources={r"/knowledge/*": {"origins": "*"}})
+
 # ========start of test======================
 @app.route("/debug/test-notify")
 def debug_test_notify():
@@ -92,6 +89,9 @@ users_collection = db["admin_users"]
 knowledge_collection = db["knowledge"]
 sessions = db["bot_sessions"]         # { chat_id, state, language, email, updated_at }
 settings_collection = db["settings"]  # { webhook_enabled, bot_main_url, bot_alt_url }
+
+# In-memory store for uploaded bot knowledge files
+BOT_KNOWLEDGE = {}
 
 # Cloudinary
 cloudinary.config(
