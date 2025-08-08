@@ -19,7 +19,12 @@ import mimetypes
 import uuid
 import json
 from datetime import datetime
+from knowledge import router as knowledge_router
+import json, uuid, time
+from flask import request, jsonify
 
+#==================upload=====
+DOCS = {}  # doc_id -> metadata dict
 # =========================
 # Boot / Config
 # =========================
@@ -33,6 +38,8 @@ from flask_cors import CORS
 import os
 
 app = Flask(__name__)
+from flask_cors import CORS
+CORS(app, resources={r"/knowledge/*": {"origins": "*"}})
 # ========start of test======================
 @app.route("/debug/test-notify")
 def debug_test_notify():
@@ -985,7 +992,71 @@ def debug_telegram_env():
         "token_masked": masked,
         "chat_id": chat,
     })
+#==========upload====
+@app.route("/knowledge/health", methods=["GET"])
+def knowledge_health():
+    return jsonify({"ok": True, "service": "knowledge"})
 
+@app.route("/knowledge/upload", methods=["POST"])
+def knowledge_upload():
+    language = request.args.get("language")
+    if not language:
+        return jsonify({"error": "Missing language"}), 400
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    filename = file.filename or "file"
+    ext = filename.rsplit(".", 1)[-1].lower()
+    if ext not in {"pdf", "json"}:
+        return jsonify({"error": "Only .pdf or .json allowed"}), 400
+
+    content = file.read()
+
+    if ext == "pdf":
+        text = "PDF_TEXT_PLACEHOLDER"  # TODO: integrate real parser later
+    else:
+        try:
+            data = json.loads(content.decode("utf-8"))
+        except Exception:
+            return jsonify({"error": "Invalid JSON"}), 400
+        def walk(node):
+            if isinstance(node, dict):
+                return "\n".join(f"{k}: {walk(v)}" for k, v in node.items())
+            if isinstance(node, list):
+                return "\n".join(walk(x) for x in node)
+            return str(node)
+        text = walk(data)
+
+    if not text.strip():
+        return jsonify({"error": "No text to index"}), 400
+
+    doc_id = str(uuid.uuid4())
+    DOCS[doc_id] = {
+        "id": doc_id,
+        "name": filename,
+        "language": language,
+        "kind": ext,
+        "size": len(content),
+        "created_at": time.time()
+    }
+    return jsonify({"ok": True, "doc": DOCS[doc_id]})
+
+@app.route("/knowledge", methods=["GET"])
+def knowledge_list():
+    language = request.args.get("language")
+    docs = list(DOCS.values())
+    if language:
+        docs = [d for d in docs if d["language"] == language]
+    return jsonify({"docs": docs})
+
+@app.route("/knowledge/<doc_id>", methods=["DELETE"])
+def knowledge_delete(doc_id):
+    if doc_id not in DOCS:
+        return jsonify({"error": "Not found"}), 404
+    del DOCS[doc_id]
+    return jsonify({"ok": True})
 # =========================
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
