@@ -28,8 +28,25 @@ load_dotenv()
 openai_client = OpenAI()
 
 # Flask
+from flask_cors import CORS
+
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/public/*": {
+        "origins": [
+            "https://cutestars.netlify.app",
+            "http://localhost:5173",  # for local dev (Vite)
+            "http://localhost:3000"   # for local dev (CRA)
+        ]
+    },
+    r"/api/*": {
+        "origins": [
+            "https://cutestars.netlify.app",
+            "http://localhost:5173",
+            "http://localhost:3000"
+        ]
+    },
+})
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key")
 
 # Mongo
