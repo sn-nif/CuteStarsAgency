@@ -355,10 +355,16 @@ document.getElementById("kbForm").addEventListener("submit", async e => {
 
   try {
     const res = await fetch("/knowledge/upload", { method: "POST", body: fd, credentials: "include" });
-    const data = await res.json();
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(raw.slice(0, 200)); // show first part of non-JSON response
+    }
     if (!res.ok || !data.ok) throw new Error(data.error || "Upload failed");
     msg.style.color = "#9BE37A";
-    msg.textContent = `✅ Uploaded ${data.doc.name}`;
+    msg.textContent = `✅ Uploaded ${data.doc.name} (${data.doc.chunks_indexed} chunks)`;
     document.getElementById("kbForm").reset();
     loadKnowledge();
   } catch (err) {
