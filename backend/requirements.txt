@@ -11,3 +11,4 @@ gTTS==2.3.2
 ffmpeg-python
 pypdf==4.2.0
 numpy
+PyMuPDF
