@@ -1,29 +1,28 @@
 import React, { useEffect, useState } from "react";
 import { CheckCircle } from "lucide-react";
 
-const BACKEND =
-  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_BACKEND_URL) ||
-  process.env.REACT_APP_BACKEND_URL ||
-  ""; // fallback to same-origin if you proxy in dev
+// Direct backend URL (change if needed)
+const BACKEND_URL = "https://cutestars-backend.onrender.com";
 
 const ThankYou = () => {
   const [botUrl, setBotUrl] = useState("#");
 
   useEffect(() => {
-    const loadLink = async () => {
+    const loadBotLink = async () => {
       try {
-        const res = await fetch(`${BACKEND}/public/bot-link`, {
-          // no credentials needed; it’s a public route
+        const res = await fetch(`${BACKEND_URL}/public/bot-link?t=${Date.now()}`, {
+          mode: "cors",
         });
         if (!res.ok) throw new Error("Failed to load bot link");
         const { url } = await res.json();
         setBotUrl(url || "https://t.me/AiSiva_bot");
       } catch (err) {
         console.error("Bot link fetch failed:", err);
-        setBotUrl("https://t.me/AiSiva_bot"); // hard fallback
+        setBotUrl("https://t.me/AiSiva_bot"); // fallback if backend unreachable
       }
     };
-    loadLink();
+
+    loadBotLink();
   }, []);
 
   return (
