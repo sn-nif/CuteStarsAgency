@@ -999,9 +999,8 @@ def knowledge_health():
 
 @app.route("/knowledge/upload", methods=["POST"])
 def knowledge_upload():
-    language = request.args.get("language")
-    if not language:
-        return jsonify({"error": "Missing language"}), 400
+    # language is optional now; default to "all"
+    language = request.args.get("language", "all")
 
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
@@ -1009,25 +1008,35 @@ def knowledge_upload():
     file = request.files["file"]
     filename = file.filename or "file"
     ext = filename.rsplit(".", 1)[-1].lower()
-    if ext not in {"pdf", "json"}:
-        return jsonify({"error": "Only .pdf or .json allowed"}), 400
+    if ext not in {"pdf", "json", "jsonl"}:
+        return jsonify({"error": "Only .pdf, .json, .jsonl allowed"}), 400
 
     content = file.read()
 
     if ext == "pdf":
-        text = "PDF_TEXT_PLACEHOLDER"  # TODO: integrate real parser later
+        text = "PDF_TEXT_PLACEHOLDER"  # TODO: plug real PDF parser later
     else:
+        # Accept JSON or JSONL; if JSONL, just index raw text lines
         try:
-            data = json.loads(content.decode("utf-8"))
+            text_str = content.decode("utf-8", errors="ignore")
         except Exception:
-            return jsonify({"error": "Invalid JSON"}), 400
-        def walk(node):
-            if isinstance(node, dict):
-                return "\n".join(f"{k}: {walk(v)}" for k, v in node.items())
-            if isinstance(node, list):
-                return "\n".join(walk(x) for x in node)
-            return str(node)
-        text = walk(data)
+            return jsonify({"error": "Invalid text encoding"}), 400
+
+        if ext == "jsonl":
+            text = text_str  # keep as-is for indexing
+        else:
+            try:
+                data = json.loads(text_str)
+            except Exception:
+                return jsonify({"error": "Invalid JSON"}), 400
+
+            def walk(node):
+                if isinstance(node, dict):
+                    return "\n".join(f"{k}: {walk(v)}" for k, v in node.items())
+                if isinstance(node, list):
+                    return "\n".join(walk(x) for x in node)
+                return str(node)
+            text = walk(data)
 
     if not text.strip():
         return jsonify({"error": "No text to index"}), 400
@@ -1036,13 +1045,12 @@ def knowledge_upload():
     DOCS[doc_id] = {
         "id": doc_id,
         "name": filename,
-        "language": language,
+        "language": language,  # will be "all"
         "kind": ext,
         "size": len(content),
         "created_at": time.time()
     }
     return jsonify({"ok": True, "doc": DOCS[doc_id]})
-
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
     language = request.args.get("language")
