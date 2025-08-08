@@ -789,6 +789,16 @@ def telegram_webhook():
 
 # =========================
 # Main
+@app.route("/debug/telegram-env")
+def debug_telegram_env():
+    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat = os.getenv("TELEGRAM_CHAT_ID", "")
+    masked = tok[:10] + "…" + tok[-5:] if len(tok) > 20 else ("set" if tok else "")
+    return jsonify({
+        "has_token": bool(tok),
+        "token_masked": masked,
+        "chat_id": chat,
+    })
 # =========================
 if __name__ == "__main__":
     print("✅ Flask server ready on port", PORT)
