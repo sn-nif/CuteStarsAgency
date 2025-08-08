@@ -1053,11 +1053,8 @@ def knowledge_upload():
     return jsonify({"ok": True, "doc": DOCS[doc_id]})
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
-    language = request.args.get("language")
-    docs = list(DOCS.values())
-    if language:
-        docs = [d for d in docs if d["language"] == language]
-    return jsonify({"docs": docs})
+    # No language filtering; return everything
+    return jsonify({"docs": list(DOCS.values())})
 
 @app.route("/knowledge/<doc_id>", methods=["DELETE"])
 def knowledge_delete(doc_id):
