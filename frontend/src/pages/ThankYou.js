@@ -13,7 +13,7 @@ const ThankYou = () => {
         if (s.webhook_enabled) {
           setBotUrl(s.bot_main_url || "https://t.me/AiSiva_bot");
         } else {
-          setBotUrl(s.bot_alt_url || "https://t.me/CStarsagency");
+          setBotUrl(s.bot_alt_url || "https://t.me/AlternateBot");
         }
       } catch (err) {
         console.error("Settings fetch failed:", err);
