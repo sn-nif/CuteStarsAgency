@@ -25,7 +25,15 @@ from flask_cors import CORS
 from pymongo import MongoClient
 import cloudinary.uploader
 from openai import OpenAI
+from langchain.vectorstores import FAISS
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.docstore.document import Document
+from PyPDF2 import PdfReader
+import json
 
+# Initialize embeddings + vector store
+embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
+vector_store = None  # Will store indexed documents
 # =========================
 # Boot / Config
 # =========================
@@ -632,6 +640,32 @@ def admin_upload_pdf():
 # =========================
 # Telegram Webhook
 # =========================
+# --- RAG helpers for the bot (language-agnostic storage) ---
+def _embed(text: str) -> np.ndarray:
+    v = openai_client.embeddings.create(model="text-embedding-3-small", input=text).data[0].embedding
+    return np.array(v, dtype=np.float32)
+
+def retrieve_context(query: str, k: int = 6) -> str:
+    """Cosine-sim search over Mongo 'knowledge' chunks → joined context string."""
+    qv = _embed(query)
+    scored = []
+    # pull a manageable batch; add filtering/paging as needed
+    for row in knowledge_collection.find({}, {"_id": 0, "text": 1, "embedding": 1}).limit(2000):
+        ev = np.array(row.get("embedding") or [], dtype=np.float32)
+        if ev.size == 0: 
+            continue
+        sim = float(np.dot(qv, ev) / (np.linalg.norm(qv) * np.linalg.norm(ev) + 1e-9))
+        scored.append((sim, row["text"]))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    chunks = [t for _, t in scored[:k]]
+    return "\n\n".join(chunks)
+
+def build_context_for_intro() -> str:
+    # broad warm-up query; storage can be in any language
+    return retrieve_context("overview role pay onboarding policies", k=6)
+
+def build_context_for_question(question: str) -> str:
+    return retrieve_context(question, k=6)
 @app.route("/webhook", methods=["POST"])
 def telegram_webhook():
     LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
@@ -973,72 +1007,73 @@ def knowledge_health():
     return jsonify({"ok": True, "service": "knowledge"})
 
 @app.route("/knowledge/upload", methods=["POST"])
-def knowledge_upload():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files["file"]
-    filename = file.filename or "file"
-    ext = filename.rsplit(".", 1)[-1].lower()
-
-    if ext not in {"pdf", "json", "jsonl"}:
-        return jsonify({"error": f"Unsupported file type: {ext}"}), 400
-
-    raw = file.read()
-    doc_id = str(uuid.uuid4())
-    text_parts: list[str] = []
-
+def upload_knowledge():
+    global vector_store
     try:
-        if ext == "pdf":
-            reader = PdfReader(io.BytesIO(raw))
-            for page in reader.pages:
-                t = page.extract_text()
-                if t:
-                    text_parts.append(t.strip())
+        file = request.files.get("file")
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
 
-        elif ext == "json":
-            data = json.loads(raw.decode("utf-8", errors="ignore"))
+        filename = file.filename
+        ext = os.path.splitext(filename)[1].lower()
+        save_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(save_path)
+
+        text_chunks = []
+
+        # ===== PDF =====
+        if ext == ".pdf":
+            reader = PdfReader(save_path)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    text_chunks.append(text.strip())
+
+        # ===== JSON =====
+        elif ext == ".json":
+            with open(save_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
             if isinstance(data, list):
                 for entry in data:
-                    text_parts.append(json.dumps(entry, ensure_ascii=False))
+                    text_chunks.append(json.dumps(entry, ensure_ascii=False))
             elif isinstance(data, dict):
-                text_parts.append(json.dumps(data, ensure_ascii=False))
-            else:
-                text_parts.append(str(data))
+                text_chunks.append(json.dumps(data, ensure_ascii=False))
 
-        elif ext == "jsonl":
-            for line in raw.decode("utf-8", errors="ignore").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    obj = json.loads(line.strip())
-                    text_parts.append(json.dumps(obj, ensure_ascii=False))
-                except json.JSONDecodeError:
-                    continue
+        # ===== JSONL =====
+        elif ext == ".jsonl":
+            with open(save_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            obj = json.loads(line.strip())
+                            text_chunks.append(json.dumps(obj, ensure_ascii=False))
+                        except json.JSONDecodeError:
+                            continue
+
+        else:
+            return jsonify({"error": f"Unsupported file type: {ext}"}), 400
+
+        # Convert chunks to LangChain Document objects
+        docs = [Document(page_content=chunk) for chunk in text_chunks]
+
+        # Create or update FAISS vector store
+        if vector_store is None:
+            vector_store = FAISS.from_documents(docs, embeddings)
+        else:
+            vector_store.add_documents(docs)
+
+        return jsonify({
+            "ok": True,
+            "doc": {
+                "name": filename,
+                "kind": ext[1:],
+                "size": os.path.getsize(save_path),
+                "chunks": len(text_chunks)
+            }
+        })
 
     except Exception as e:
-        return jsonify({"error": f"Failed to parse {ext.upper()}: {str(e)}"}), 500
-
-    if not text_parts:
-        return jsonify({"error": "No text extracted from file"}), 400
-
-    try:
-        combined = "\n".join(text_parts)
-        chunks_indexed = index_into_vector_store(
-            doc_id=doc_id, name=filename, kind=ext, text=combined
-        )
-    except Exception as e:
-        return jsonify({"error": f"Indexing failed: {str(e)}"}), 500
-
-    DOCS[doc_id] = {
-        "id": doc_id,
-        "name": filename,
-        "kind": ext,
-        "size": len(raw),
-        "chunks": chunks_indexed,
-        "created_at": time.time()
-    }
-    return jsonify({"ok": True, "doc": DOCS[doc_id]})
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
