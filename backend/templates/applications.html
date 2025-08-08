@@ -117,6 +117,7 @@
         input:checked + .slider{background:gold}
         input:checked + .slider:before{transform:translateX(24px)}
       </style>
+
       <!-- 📚 Bot Knowledge (Upload PDF) -->
       <hr style="margin: 30px 0; border: 1px solid #333;" />
       <h2 style="color: gold;">📚 Bot Knowledge (Upload PDF)</h2>
@@ -150,10 +151,22 @@
     const settingsTab = document.getElementById("settingsTab");
     const applicationsSection = document.getElementById("applicationsSection");
     const settingsSection = document.getElementById("settingsSection");
-    applicationsTab.onclick = () => { applicationsSection.style.display="block"; settingsSection.style.display="none";
-      applicationsTab.classList.add("active"); settingsTab.classList.remove("active"); };
-    settingsTab.onclick = () => { applicationsSection.style.display="none"; settingsSection.style.display="block";
-      settingsTab.classList.add("active"); applicationsTab.classList.remove("active"); loadUsers(); };
+
+    applicationsTab.onclick = () => {
+      applicationsSection.style.display="block";
+      settingsSection.style.display="none";
+      applicationsTab.classList.add("active");
+      settingsTab.classList.remove("active");
+    };
+
+    settingsTab.onclick = () => {
+      applicationsSection.style.display="none";
+      settingsSection.style.display="block";
+      settingsTab.classList.add("active");
+      applicationsTab.classList.remove("active");
+      loadUsers();
+      loadSettings();
+    };
 
     // Apps table helpers
     function toggleAll(master){ document.querySelectorAll("#appsBody input[type='checkbox']").forEach(cb=>cb.checked=master.checked); }
@@ -175,9 +188,7 @@
     async function loadApplications() {
       try {
         const res = await fetch("/api/applications", { credentials: "include" });
-        if (!res.ok) {
-          throw new Error("Failed to load applications");
-        }
+        if (!res.ok) throw new Error("Failed to load applications");
         const data = await res.json();
         const body = document.getElementById("appsBody");
         body.innerHTML = "";
@@ -203,10 +214,10 @@
           `;
           body.appendChild(row);
         });
-  } catch (e) {
-    alert(e.message);
-  }
-}
+      } catch (e) {
+        alert(e.message);
+      }
+    }
 
     async function loadAdminDropdown(){
       const res=await fetch("/api/users"); const users=await res.json();
@@ -273,7 +284,7 @@
         .then(r=>r.json()).then(d=>alert(d.status||d.error));
     };
 
-    // PDF upload -> /admin/upload-pdf
+    // PDF upload
     const pdfForm=document.getElementById("pdfForm");
     if(pdfForm){
       pdfForm.addEventListener("submit",async(e)=>{
@@ -289,69 +300,55 @@
         }catch(err){ msg.style.color="#ff6b6b"; msg.textContent="❌ "+err.message; }
       });
     }
-    <script>
-  async function loadSettings() {
-    try {
-      const res = await fetch("/api/settings", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load settings");
-      const s = await res.json();
-      document.getElementById("webhookToggle").checked = !!s.webhook_enabled;
-      document.getElementById("botMainUrl").value = s.bot_main_url || "";
-      document.getElementById("botAltUrl").value  = s.bot_alt_url  || "";
-    } catch (e) {
-      console.error(e);
-      document.getElementById("settingsMsg").textContent = "Failed to load settings";
-      document.getElementById("settingsMsg").style.color = "#ff6b6b";
+
+    // Settings load/save
+    async function loadSettings() {
+      try {
+        const res = await fetch("/api/settings", { credentials: "include" });
+        if (!res.ok) throw new Error("Failed to load settings");
+        const s = await res.json();
+        document.getElementById("webhookToggle").checked = !!s.webhook_enabled;
+        document.getElementById("botMainUrl").value = s.bot_main_url || "";
+        document.getElementById("botAltUrl").value  = s.bot_alt_url  || "";
+      } catch (e) {
+        console.error(e);
+        document.getElementById("settingsMsg").textContent = "Failed to load settings";
+        document.getElementById("settingsMsg").style.color = "#ff6b6b";
+      }
     }
-  }
-
-  async function saveSettings() {
-    const msg = document.getElementById("settingsMsg");
-    msg.style.color = "#bbb";
-    msg.textContent = "Saving…";
-    const payload = {
-      webhook_enabled: document.getElementById("webhookToggle").checked,
-      bot_main_url: document.getElementById("botMainUrl").value.trim(),
-      bot_alt_url:  document.getElementById("botAltUrl").value.trim(),
-    };
-    try {
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Save failed");
-      msg.style.color = "#9BE37A";
-      msg.textContent = "Saved!";
-    } catch (e) {
-      msg.style.color = "#ff6b6b";
-      msg.textContent = "❌ " + e.message;
+    async function saveSettings() {
+      const msg = document.getElementById("settingsMsg");
+      msg.style.color = "#bbb";
+      msg.textContent = "Saving…";
+      const payload = {
+        webhook_enabled: document.getElementById("webhookToggle").checked,
+        bot_main_url: document.getElementById("botMainUrl").value.trim(),
+        bot_alt_url:  document.getElementById("botAltUrl").value.trim(),
+      };
+      try {
+        const res = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || "Save failed");
+        msg.style.color = "#9BE37A";
+        msg.textContent = "Saved!";
+      } catch (e) {
+        msg.style.color = "#ff6b6b";
+        msg.textContent = "❌ " + e.message;
+      }
     }
-  }
+    document.getElementById("saveSettingsBtn").addEventListener("click", (e) => {
+      e.preventDefault();
+      saveSettings();
+    });
 
-  // hook up the save button
-  document.getElementById("saveSettingsBtn").addEventListener("click", (e) => {
-    e.preventDefault();
-    saveSettings();
-  });
-
-  // make sure settings load when you open the tab
-  settingsTab.onclick = () => {
-    applicationsSection.style.display = "none";
-    settingsSection.style.display = "block";
-    settingsTab.classList.add("active");
-    applicationsTab.classList.remove("active");
-    loadUsers();
-    loadSettings(); // <— add this
-  };
-</script>
-    // initial draws
+    // Initial draws
     loadApplications();
     loadAdminDropdown();
   </script>
-
-  
 </body>
 </html>
