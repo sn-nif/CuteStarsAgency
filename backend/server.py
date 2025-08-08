@@ -113,6 +113,28 @@ ADMIN_CHAT_ID   = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 # =========================
 # Helpers
 # =========================
+def search_knowledge(query: str, top_k: int = 6) -> list[dict]:
+    # 1) embed the query
+    q_emb = client_openai.embeddings.create(
+        model="text-embedding-3-small",  # multilingual
+        input=query
+    ).data[0].embedding
+    q = np.array(q_emb, dtype=np.float32)
+
+    # 2) iterate all chunks across all docs
+    scored = []
+    for doc in knowledge_collection.find({}, {"chunks": 1}):
+        for ch in doc.get("chunks", []):
+            v = np.array(ch.get("embedding", []), dtype=np.float32)
+            if v.size == 0: 
+                continue
+            sim = float(np.dot(q, v) / (np.linalg.norm(q) * np.linalg.norm(v) + 1e-9))
+            scored.append((sim, ch["text"]))
+
+    # 3) top-k
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [t for _, t in scored[:top_k]]
+
 def country_to_flag(country_name):
     try:
         if not country_name:
@@ -289,12 +311,12 @@ def search_knowledge(query: str, lang: str, k: int = 5) -> list[dict]:
     return [d for _, d in scored[:k]]
 
 def build_context_for_intro(lang: str) -> str:
-    docs = search_knowledge("overview, role, pay, requirements, onboarding, policies", lang, k=6)
-    return "\n\n".join(d["text"] for d in docs)
+    chunks = search_knowledge("overview, role, pay, onboarding, policies", top_k=6)
+    return "\n\n".join(chunks)
 
 def build_context_for_question(lang: str, question: str) -> str:
-    docs = search_knowledge(question, lang, k=6)
-    return "\n\n".join(d["text"] for d in docs)
+    chunks = search_knowledge(question, top_k=6)
+    return "\n\n".join(chunks)
 # -------- end knowledge helpers --------
 
 # =========================
@@ -1001,58 +1023,83 @@ def knowledge_health():
 
 @app.route("/knowledge/upload", methods=["POST"])
 def knowledge_upload():
-    # language is optional now; default to "all"
-    language = request.args.get("language", "all")
-
     if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+        return jsonify({"ok": False, "error": "No file uploaded"}), 400
 
-    file = request.files["file"]
-    filename = file.filename or "file"
-    ext = filename.rsplit(".", 1)[-1].lower()
-    if ext not in {"pdf", "json", "jsonl"}:
-        return jsonify({"error": "Only .pdf, .json, .jsonl allowed"}), 400
+    f = request.files["file"]
+    name = f.filename or "file"
+    ext = name.rsplit(".", 1)[-1].lower()
+    raw = f.read()
 
-    content = file.read()
-
+    # 1) Extract text (no language classification; we store all)
     if ext == "pdf":
-        text = "PDF_TEXT_PLACEHOLDER"  # TODO: plug real PDF parser later
+        text = extract_pdf_text(raw)
+    elif ext in {"json", "jsonl"}:
+        text = extract_json_text(raw, ext)
     else:
-        # Accept JSON or JSONL; if JSONL, just index raw text lines
-        try:
-            text_str = content.decode("utf-8", errors="ignore")
-        except Exception:
-            return jsonify({"error": "Invalid text encoding"}), 400
+        return jsonify({"ok": False, "error": "Only .pdf, .json, .jsonl allowed"}), 400
 
-        if ext == "jsonl":
-            text = text_str  # keep as-is for indexing
-        else:
-            try:
-                data = json.loads(text_str)
-            except Exception:
-                return jsonify({"error": "Invalid JSON"}), 400
+    # 2) Chunk
+    chunks = split_text(text, max_chars=3200, overlap=400)
+    if not chunks:
+        return jsonify({"ok": False, "error": "No text to index"}), 400
 
-            def walk(node):
-                if isinstance(node, dict):
-                    return "\n".join(f"{k}: {walk(v)}" for k, v in node.items())
-                if isinstance(node, list):
-                    return "\n".join(walk(x) for x in node)
-                return str(node)
-            text = walk(data)
+    # 3) Embed (multilingual model) and store
+    vectors = client_openai.embeddings.create(
+        model="text-embedding-3-small",  # multilingual
+        input=chunks
+    ).data
 
-    if not text.strip():
-        return jsonify({"error": "No text to index"}), 400
+    items = []
+    for i, ch in enumerate(chunks):
+        items.append({"text": ch, "embedding": vectors[i].embedding})
 
-    doc_id = str(uuid.uuid4())
-    DOCS[doc_id] = {
-        "id": doc_id,
-        "name": filename,
-        "language": language,  # will be "all"
-        "kind": ext,
-        "size": len(content),
-        "created_at": time.time()
-    }
-    return jsonify({"ok": True, "doc": DOCS[doc_id]})
+    knowledge_collection.insert_one({
+        "name": name,
+        "size": len(raw),
+        "created_at": datetime.utcnow(),
+        "chunks": items,   # language-agnostic storage
+    })
+
+    doc_id = str(knowledge_collection.find_one(
+        {"name": name}, sort=[("_id", -1)]
+    )["_id"])
+
+    return jsonify({"ok": True, "doc": {"id": doc_id, "name": name, "kind": ext, "size": len(raw)}})
+
+def extract_pdf_text(raw_bytes: bytes) -> str:
+    doc = fitz.open(stream=raw_bytes, filetype="pdf")
+    return "\n".join((page.get_text() or "") for page in doc)
+
+def extract_json_text(raw_bytes: bytes, ext: str) -> str:
+    s = raw_bytes.decode("utf-8", errors="ignore")
+    if ext == "jsonl":
+        return s
+    try:
+        obj = json.loads(s)
+    except Exception:
+        raise ValueError("Invalid JSON")
+    def walk(x):
+        if isinstance(x, dict):  return "\n".join(f"{k}: {walk(v)}" for k,v in x.items())
+        if isinstance(x, list):  return "\n".join(walk(v) for v in x)
+        return str(x)
+    return walk(obj)
+
+def split_text(text: str, max_chars=3200, overlap=400):
+    text = re.sub(r"\s+", " ", text).strip()
+    chunks = []
+    start = 0
+    n = len(text)
+    while start < n:
+        end = min(n, start + max_chars)
+        cut = text.rfind(". ", start, end)
+        if cut == -1 or cut < start + int(0.5 * max_chars):
+            cut = end
+        chunks.append(text[start:cut].strip())
+        start = max(cut - overlap, cut)
+    return [c for c in chunks if c]
+    
+    
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
     # No language filtering; return everything
