@@ -113,6 +113,48 @@ ADMIN_CHAT_ID   = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 # =========================
 # Helpers
 # =========================
+def extract_jsonl_texts(raw_bytes: bytes, preferred_fields=("text","content","message","body","data")) -> list[str]:
+    """Return a list of text entries from a JSONL payload. Skips empty/invalid lines."""
+    texts = []
+    for i, line in enumerate(raw_bytes.splitlines()):
+        s = line.decode("utf-8", errors="ignore").strip()
+        if not s:
+            continue
+        try:
+            obj = json.loads(s)
+        except Exception:
+            # skip invalid lines rather than failing the whole upload
+            continue
+
+        # 1) if the object itself is a string -> use it
+        if isinstance(obj, str):
+            val = obj.strip()
+            if val:
+                texts.append(val)
+            continue
+
+        # 2) try common text fields
+        if isinstance(obj, dict):
+            found = None
+            for f in preferred_fields:
+                if f in obj and isinstance(obj[f], str) and obj[f].strip():
+                    found = obj[f].strip()
+                    break
+            if found:
+                texts.append(found)
+                continue
+            # 3) fallback: flatten the dict to text
+            texts.append("\n".join(f"{k}: {obj[k]}" for k in obj if isinstance(obj[k], (str, int, float))))
+            continue
+
+        # 4) list fallback
+        if isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, str) and item.strip():
+                    texts.append(item.strip())
+        # non-string items are ignored
+    return [t for t in texts if t]
+
 def search_knowledge(query: str, top_k: int = 6) -> list[dict]:
     # 1) embed the query
     q_emb = client_openai.embeddings.create(
@@ -1031,74 +1073,71 @@ def knowledge_upload():
     ext = name.rsplit(".", 1)[-1].lower()
     raw = f.read()
 
-    # 1) Extract text (no language classification; we store all)
+    # ---- Extract raw texts (list[str]) depending on type ----
+    texts: list[str] = []
+
     if ext == "pdf":
-        text = extract_pdf_text(raw)
-    elif ext in {"json", "jsonl"}:
-        text = extract_json_text(raw, ext)
+        full_text = extract_pdf_text(raw)
+        if full_text.strip():
+            texts = [full_text]
+    elif ext == "json":
+        # You already had extract_json_text; keep it if you prefer.
+        s = raw.decode("utf-8", errors="ignore")
+        try:
+            obj = json.loads(s)
+        except Exception:
+            return jsonify({"ok": False, "error": "Invalid JSON"}), 400
+        # flatten JSON into one big string
+        def walk(x):
+            if isinstance(x, dict):  return "\n".join(f"{k}: {walk(v)}" for k,v in x.items())
+            if isinstance(x, list):  return "\n".join(walk(v) for v in x)
+            return str(x)
+        flat = walk(obj)
+        if flat.strip():
+            texts = [flat]
+    elif ext == "jsonl":
+        texts = extract_jsonl_texts(raw)
+        if not texts:
+            return jsonify({"ok": False, "error": "No usable lines in JSONL"}), 400
     else:
         return jsonify({"ok": False, "error": "Only .pdf, .json, .jsonl allowed"}), 400
 
-    # 2) Chunk
-    chunks = split_text(text, max_chars=3200, overlap=400)
+    # ---- Split each text into chunks (overlap for better recall) ----
+    chunks: list[str] = []
+    for t in texts:
+        chunks.extend(split_text(t, max_chars=3200, overlap=400))
+    chunks = [c for c in chunks if c.strip()]
     if not chunks:
         return jsonify({"ok": False, "error": "No text to index"}), 400
 
-    # 3) Embed (multilingual model) and store
-    vectors = client_openai.embeddings.create(
-        model="text-embedding-3-small",  # multilingual
-        input=chunks
-    ).data
+    # ---- Embed in batches to avoid request limits ----
+    EMB_MODEL = "text-embedding-3-small"  # multilingual
+    BATCH = 100
+    embeddings = []
+    for i in range(0, len(chunks), BATCH):
+        batch = chunks[i:i+BATCH]
+        resp = client_openai.embeddings.create(model=EMB_MODEL, input=batch)
+        embeddings.extend([d.embedding for d in resp.data])
 
-    items = []
-    for i, ch in enumerate(chunks):
-        items.append({"text": ch, "embedding": vectors[i].embedding})
-
-    knowledge_collection.insert_one({
+    # ---- Build chunk records and store ----
+    items = [{"text": ch, "embedding": emb} for ch, emb in zip(chunks, embeddings)]
+    ins = knowledge_collection.insert_one({
         "name": name,
+        "kind": ext,
         "size": len(raw),
         "created_at": datetime.utcnow(),
-        "chunks": items,   # language-agnostic storage
+        "chunks": items
     })
-
-    doc_id = str(knowledge_collection.find_one(
-        {"name": name}, sort=[("_id", -1)]
-    )["_id"])
-
-    return jsonify({"ok": True, "doc": {"id": doc_id, "name": name, "kind": ext, "size": len(raw)}})
-
-def extract_pdf_text(raw_bytes: bytes) -> str:
-    doc = fitz.open(stream=raw_bytes, filetype="pdf")
-    return "\n".join((page.get_text() or "") for page in doc)
-
-def extract_json_text(raw_bytes: bytes, ext: str) -> str:
-    s = raw_bytes.decode("utf-8", errors="ignore")
-    if ext == "jsonl":
-        return s
-    try:
-        obj = json.loads(s)
-    except Exception:
-        raise ValueError("Invalid JSON")
-    def walk(x):
-        if isinstance(x, dict):  return "\n".join(f"{k}: {walk(v)}" for k,v in x.items())
-        if isinstance(x, list):  return "\n".join(walk(v) for v in x)
-        return str(x)
-    return walk(obj)
-
-def split_text(text: str, max_chars=3200, overlap=400):
-    text = re.sub(r"\s+", " ", text).strip()
-    chunks = []
-    start = 0
-    n = len(text)
-    while start < n:
-        end = min(n, start + max_chars)
-        cut = text.rfind(". ", start, end)
-        if cut == -1 or cut < start + int(0.5 * max_chars):
-            cut = end
-        chunks.append(text[start:cut].strip())
-        start = max(cut - overlap, cut)
-    return [c for c in chunks if c]
-    
+    return jsonify({
+        "ok": True,
+        "doc": {
+            "id": str(ins.inserted_id),
+            "name": name,
+            "kind": ext,
+            "size": len(raw),
+            "chunks_indexed": len(items)
+        }
+    })
     
 @app.route("/knowledge", methods=["GET"])
 def knowledge_list():
