@@ -46,7 +46,6 @@ from flask_cors import CORS
 
 ALLOWED_ORIGINS = [
     "https://cute-stars.onrender.com",  # new frontend on Render
-    "https://cutestars.netlify.app"     # old Netlify (can remove later)
 ]
 
 CORS(
