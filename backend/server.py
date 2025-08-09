@@ -21,7 +21,6 @@ from flask import (
     Flask, request, render_template, redirect, url_for,
     session, jsonify
 )
-from flask_cors import CORS
 from pymongo import MongoClient
 import cloudinary.uploader
 from openai import OpenAI
@@ -43,17 +42,19 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key")
 
 # Single CORS init (includes admin and frontend)
+from flask_cors import CORS
+
+ALLOWED_ORIGINS = [
+    "https://cute-stars.onrender.com",  # new frontend on Render
+    "https://cutestars.netlify.app"     # old Netlify (can remove later)
+]
+
 CORS(
     app,
-    supports_credentials=True,
-    resources={r"/*": {
-        "origins": [
-            "https://cutestars.netlify.app",
-            "http://localhost:5173",
-            "http://localhost:3000"
-        ]
-    }}
+    resources={r"/*": {"origins": ALLOWED_ORIGINS}},
+    supports_credentials=True
 )
+
 
 # Upload dir
 UPLOAD_FOLDER = "uploads"
