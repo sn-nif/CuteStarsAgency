@@ -993,7 +993,36 @@ def handle_webhook_logic(chat_id, text, msg):
     # Fallback
     tg_send_message(chat_id, "Please type /start to begin.")
     return "ok", 200
+#===========debug open ai ========
+@app.route("/debug/openai-ping")
+def debug_openai_ping():
+    try:
+        # 1) quick/cheap embeddings ping
+        emb = openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input="ping"
+        )
+        emb_ok = bool(emb.data and emb.data[0].embedding)
 
+        # 2) quick chat ping
+        chat = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a terse bot."},
+                {"role": "user", "content": "Reply with the single word: pong"}
+            ],
+            temperature=0
+        )
+        reply = chat.choices[0].message.content.strip()
+
+        return jsonify({
+            "status": "ok",
+            "embeddings_ok": emb_ok,
+            "chat_reply": reply
+        })
+    except Exception as e:
+        # show why it failed (bad key, missing credits, model access, etc.)
+        return jsonify({"status": "error", "error": str(e)}), 500
 # =========================
 # Knowledge upload/list/delete/search (JSON, JSONL, PDF)
 # =========================
