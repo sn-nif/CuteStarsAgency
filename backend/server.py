@@ -638,27 +638,30 @@ def admin_upload_pdf():
         return jsonify({"error": str(e)}), 500
 
 # =========================
-# Telegram Webhook
+# Telegram Webhook (RAG + multilingual flow)
 # =========================
+
 # --- RAG helpers for the bot (language-agnostic storage) ---
 def _embed(text: str) -> np.ndarray:
-    v = openai_client.embeddings.create(model="text-embedding-3-small", input=text).data[0].embedding
+    v = openai_client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    ).data[0].embedding
     return np.array(v, dtype=np.float32)
 
 def retrieve_context(query: str, k: int = 6) -> str:
     """Cosine-sim search over Mongo 'knowledge' chunks → joined context string."""
     qv = _embed(query)
     scored = []
-    # pull a manageable batch; add filtering/paging as needed
+    # Limit to a manageable batch; adjust as needed
     for row in knowledge_collection.find({}, {"_id": 0, "text": 1, "embedding": 1}).limit(2000):
         ev = np.array(row.get("embedding") or [], dtype=np.float32)
-        if ev.size == 0: 
+        if ev.size == 0:
             continue
         sim = float(np.dot(qv, ev) / (np.linalg.norm(qv) * np.linalg.norm(ev) + 1e-9))
         scored.append((sim, row["text"]))
     scored.sort(key=lambda x: x[0], reverse=True)
-    chunks = [t for _, t in scored[:k]]
-    return "\n\n".join(chunks)
+    return "\n\n".join([t for _, t in scored[:k]])
 
 def build_context_for_intro() -> str:
     # broad warm-up query; storage can be in any language
@@ -666,6 +669,8 @@ def build_context_for_intro() -> str:
 
 def build_context_for_question(question: str) -> str:
     return retrieve_context(question, k=6)
+
+
 @app.route("/webhook", methods=["POST"])
 def telegram_webhook():
     LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
@@ -728,14 +733,8 @@ def telegram_webhook():
                 "Russian":    "📱 Каким телефоном вы пользуетесь?",
                 "Serbian":    "📱 Koji telefon koristite?"
             },
-            "android": {
-                "English": "Android", "Spanish": "Android", "Portuguese": "Android",
-                "Russian": "Android", "Serbian": "Android"
-            },
-            "ios": {
-                "English": "iOS", "Spanish": "iOS", "Portuguese": "iOS",
-                "Russian": "iOS", "Serbian": "iOS"
-            },
+            "android": { "English": "Android", "Spanish": "Android", "Portuguese": "Android", "Russian": "Android", "Serbian": "Android" },
+            "ios":     { "English": "iOS",     "Spanish": "iOS",     "Portuguese": "iOS",     "Russian": "iOS",     "Serbian": "iOS" },
             "choose_android_or_ios": {
                 "English":    "Please choose Android or iOS from the buttons.",
                 "Spanish":    "Por favor elija Android o iOS con los botones.",
@@ -776,7 +775,7 @@ def telegram_webhook():
 
     def kb_language():
         return {
-            "keyboard": [[{"text": l}] for l in LANGUAGES],
+            "keyboard": [[{"text": l} ] for l in LANGUAGES],
             "resize_keyboard": True,
             "one_time_keyboard": True,
         }
@@ -807,12 +806,12 @@ def telegram_webhook():
 
     text = (msg.get("text") or "").strip()
 
-    # respect admin toggle
+    # Respect admin toggle
     s_conf = get_settings()
     if not s_conf.get("webhook_enabled", True):
         return "ok", 200
 
-    # /start
+    # /start → language picker
     if text.lower().startswith("/start"):
         set_state(chat_id, state="awaiting_language")
         tg_send_message(chat_id, t("English", "welcome_choose_lang"), reply_markup=kb_language())
@@ -822,7 +821,7 @@ def telegram_webhook():
     state = st.get("state")
     lang = st.get("language", "English")
 
-    # pick language
+    # Choose language → ask email
     if state == "awaiting_language":
         chosen = text.strip()
         if chosen not in LANGUAGES:
@@ -832,7 +831,7 @@ def telegram_webhook():
         tg_send_message(chat_id, t(chosen, "ask_email"))
         return "ok", 200
 
-    # email check → GPT intro
+    # Email check → GPT intro (+ confirm button)
     if state == "awaiting_email":
         email = text.strip().lower()
         applicant = applications_collection.find_one({"email": email})
@@ -851,6 +850,7 @@ def telegram_webhook():
             f"benefits, pay cadence, and requirements in 120–180 words. Invite the applicant to ask questions.\n\n"
             f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
         )
+
         try:
             gpt_response = openai_client.chat.completions.create(
                 model="gpt-4o",
@@ -871,7 +871,7 @@ def telegram_webhook():
         set_state(chat_id, state="job_intro", email=email)
         return "ok", 200
 
-    # Q&A
+    # Q&A with button → move to platform when they press the button
     if state == "job_intro":
         if text == t(lang, "confirm_no_questions_btn"):
             set_state(chat_id, state="awaiting_platform")
@@ -885,6 +885,7 @@ def telegram_webhook():
             f"Question: {user_q}\n\n"
             f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
         )
+
         try:
             gpt_answer = openai_client.chat.completions.create(
                 model="gpt-4o",
@@ -903,7 +904,7 @@ def telegram_webhook():
         tg_send_message(chat_id, t(lang, "prompt_confirm_or_ask"), reply_markup=kb_confirm(lang))
         return "ok", 200
 
-    # choose platform → links → ask app id
+    # Choose platform → send links → ask App ID
     if state == "awaiting_platform":
         lower = text.strip().lower()
         is_android = lower == t(lang, "android").lower()
@@ -920,10 +921,11 @@ def telegram_webhook():
         set_state(chat_id, state="awaiting_app_id")
         return "ok", 200
 
-    # receive app id → thank → notify admin
+    # Receive App ID → thank → notify admin with photos
     if state == "awaiting_app_id":
         app_id = text.strip()
         email = st.get("email")
+
         if email:
             applications_collection.update_one(
                 {"email": email},
@@ -961,7 +963,7 @@ def telegram_webhook():
 
         return "ok", 200
 
-    # admin fast-approval
+    # Admin fast-approval
     if ADMIN_CHAT_ID and chat_id == ADMIN_CHAT_ID:
         parts = text.strip().split()
         if len(parts) == 2 and parts[0].lower() in ["activated", "approve", "approved"]:
@@ -982,22 +984,9 @@ def telegram_webhook():
             tg_send_message(ADMIN_CHAT_ID, f"✅ Activated {target_email}")
             return "ok", 200
 
+    # Fallback
     tg_send_message(chat_id, "Please type /start to begin.")
     return "ok", 200
-
-# =========================
-# Debug
-# =========================
-@app.route("/debug/telegram-env")
-def debug_telegram_env():
-    tok = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    chat = os.getenv("TELEGRAM_CHAT_ID", "")
-    masked = tok[:10] + "…" + tok[-5:] if len(tok) > 20 else ("set" if tok else "")
-    return jsonify({
-        "has_token": bool(tok),
-        "token_masked": masked,
-        "chat_id": chat,
-    })
 
 # =========================
 # Knowledge upload/list/delete/search (JSON, JSONL, PDF)
