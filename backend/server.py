@@ -673,6 +673,38 @@ def build_context_for_question(question: str) -> str:
 
 @app.route("/webhook", methods=["POST"])
 def telegram_webhook():
+    import traceback
+
+    try:
+        update = request.get_json(force=True, silent=True) or {}
+        print("DEBUG update:", json.dumps(update, ensure_ascii=False))
+
+        msg = update.get("message") or update.get("edited_message") or {}
+        if not msg:
+            return "ok", 200
+
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        if not chat_id:
+            return "ok", 200
+
+        text = (msg.get("text") or "").strip()
+
+        # Respect admin toggle
+        s_conf = get_settings()
+        if not s_conf.get("webhook_enabled", True):
+            print("Webhook disabled by settings.")
+            return "ok", 200
+
+        return handle_webhook_logic(chat_id, text, msg)
+
+    except Exception as e:
+        print("WEBHOOK CRASH:", e)
+        traceback.print_exc()
+        return "ok", 200
+
+
+def handle_webhook_logic(chat_id, text, msg):
     LANGUAGES = ["English", "Spanish", "Portuguese", "Russian", "Serbian"]
 
     def t(lang, key):
@@ -794,24 +826,7 @@ def telegram_webhook():
             "one_time_keyboard": True,
         }
 
-    update = request.get_json(force=True, silent=True) or {}
-    msg = update.get("message") or update.get("edited_message") or {}
-    if not msg:
-        return "ok", 200
-
-    chat = msg.get("chat") or {}
-    chat_id = chat.get("id")
-    if not chat_id:
-        return "ok", 200
-
-    text = (msg.get("text") or "").strip()
-
-    # Respect admin toggle
-    s_conf = get_settings()
-    if not s_conf.get("webhook_enabled", True):
-        return "ok", 200
-
-    # /start → language picker
+    # ---- STATES ----
     if text.lower().startswith("/start"):
         set_state(chat_id, state="awaiting_language")
         tg_send_message(chat_id, t("English", "welcome_choose_lang"), reply_markup=kb_language())
@@ -821,17 +836,16 @@ def telegram_webhook():
     state = st.get("state")
     lang = st.get("language", "English")
 
-    # Choose language → ask email
+    # Choose language
     if state == "awaiting_language":
-        chosen = text.strip()
-        if chosen not in LANGUAGES:
+        if text not in LANGUAGES:
             tg_send_message(chat_id, t("English", "pick_lang_from_buttons"), reply_markup=kb_language())
             return "ok", 200
-        set_state(chat_id, state="awaiting_email", language=chosen)
-        tg_send_message(chat_id, t(chosen, "ask_email"))
+        set_state(chat_id, state="awaiting_email", language=text)
+        tg_send_message(chat_id, t(text, "ask_email"))
         return "ok", 200
 
-    # Email check → GPT intro (+ confirm button)
+    # Email check → GPT intro
     if state == "awaiting_email":
         email = text.strip().lower()
         applicant = applications_collection.find_one({"email": email})
@@ -844,19 +858,18 @@ def telegram_webhook():
             {"$set": {"telegram_id": chat_id, "language": lang}},
         )
 
-        context = build_context_for_intro() or ""
-        prompt_user = (
-            f"Speak in {lang}. Using ONLY the provided context, briefly explain the job, "
-            f"benefits, pay cadence, and requirements in 120–180 words. Invite the applicant to ask questions.\n\n"
-            f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
-        )
-
         try:
+            context = build_context_for_intro()
+            prompt_user = (
+                f"Speak in {lang}. Using ONLY the provided context, briefly explain the job, "
+                f"benefits, pay cadence, and requirements in 120–180 words. Invite the applicant to ask questions.\n\n"
+                f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
+            )
             gpt_response = openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system",
-                     "content": "You are a recruiter. Answer strictly from context. If something is missing, say you'll confirm with an admin."},
+                     "content": "You are a recruiter. Answer strictly from context."},
                     {"role": "user", "content": prompt_user},
                 ],
                 temperature=0.4,
@@ -871,22 +884,20 @@ def telegram_webhook():
         set_state(chat_id, state="job_intro", email=email)
         return "ok", 200
 
-    # Q&A with button → move to platform when they press the button
+    # Q&A stage
     if state == "job_intro":
         if text == t(lang, "confirm_no_questions_btn"):
             set_state(chat_id, state="awaiting_platform")
             tg_send_message(chat_id, t(lang, "ask_platform"), reply_markup=kb_platform(lang))
             return "ok", 200
 
-        user_q = text
-        context = build_context_for_question(user_q) or ""
-        qna_prompt = (
-            f"Use the context to answer in {lang}, friendly and concise.\n"
-            f"Question: {user_q}\n\n"
-            f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
-        )
-
         try:
+            context = build_context_for_question(text)
+            qna_prompt = (
+                f"Use the context to answer in {lang}, friendly and concise.\n"
+                f"Question: {text}\n\n"
+                f"=== CONTEXT START ===\n{context}\n=== CONTEXT END ==="
+            )
             gpt_answer = openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
@@ -904,12 +915,11 @@ def telegram_webhook():
         tg_send_message(chat_id, t(lang, "prompt_confirm_or_ask"), reply_markup=kb_confirm(lang))
         return "ok", 200
 
-    # Choose platform → send links → ask App ID
+    # Choose platform
     if state == "awaiting_platform":
         lower = text.strip().lower()
         is_android = lower == t(lang, "android").lower()
-        is_ios     = lower == t(lang, "ios").lower()
-
+        is_ios = lower == t(lang, "ios").lower()
         if not (is_android or is_ios):
             tg_send_message(chat_id, t(lang, "choose_android_or_ios"), reply_markup=kb_platform(lang))
             return "ok", 200
@@ -921,17 +931,15 @@ def telegram_webhook():
         set_state(chat_id, state="awaiting_app_id")
         return "ok", 200
 
-    # Receive App ID → thank → notify admin with photos
+    # Receive App ID
     if state == "awaiting_app_id":
         app_id = text.strip()
         email = st.get("email")
-
         if email:
             applications_collection.update_one(
                 {"email": email},
                 {"$set": {"application_id": app_id}},
             )
-
         tg_send_message(chat_id, t(lang, "thanks_wait"))
         set_state(chat_id, state="waiting_approval")
 
@@ -963,7 +971,7 @@ def telegram_webhook():
 
         return "ok", 200
 
-    # Admin fast-approval
+    # Admin fast approval
     if ADMIN_CHAT_ID and chat_id == ADMIN_CHAT_ID:
         parts = text.strip().split()
         if len(parts) == 2 and parts[0].lower() in ["activated", "approve", "approved"]:
@@ -972,12 +980,10 @@ def telegram_webhook():
             if not applicant:
                 tg_send_message(ADMIN_CHAT_ID, f"❌ No applicant with email {target_email}")
                 return "ok", 200
-
             applications_collection.update_one(
                 {"_id": applicant["_id"]},
                 {"$set": {"status": "activated"}},
             )
-
             tgt_chat_id = applicant.get("telegram_id")
             if tgt_chat_id:
                 tg_send_message(int(tgt_chat_id), "🎉 Your account has been activated. You can log in now.")
